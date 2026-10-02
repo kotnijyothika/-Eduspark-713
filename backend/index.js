@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const seedDefaultAccounts = require('./utils/seedAtlas');
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const teacherRoutes = require('./routes/teacherRoutes');
@@ -49,6 +50,7 @@ const startServer = async () => {
   try {
     await connectDB();
     console.log('✅ Connected to MongoDB Atlas.');
+    await seedDefaultAccounts();
   } catch (error) {
     console.warn('⚠️ MongoDB Atlas connection notice:', error.message || error);
     console.warn('⚡ Running in resilient fallback / offline demo mode using memoryStore.');

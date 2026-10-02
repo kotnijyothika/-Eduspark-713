@@ -32,7 +32,7 @@ interface SidebarProps {
   role: UserRole;
   userName?: string;
   userEmail?: string;
-  onLogout: () => void;
+  onLogout: (reason?: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
 }
@@ -186,7 +186,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
             <button
-              onClick={onLogout}
+              type="button"
+              onClick={() => {
+                console.log('[Sidebar] User clicked sidebar sign out button');
+                onLogout();
+              }}
               title="Sign Out"
               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
             >

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { fetchApi } from '../../services/api';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import {
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
+  const { token, isLoading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -63,10 +65,12 @@ export const AdminDashboard: React.FC = () => {
     name: string;
   } | null>(null);
 
-  // Load Data on Mount
+  // Load Data on Auth Readiness
   useEffect(() => {
-    loadAllAdminData();
-  }, []);
+    if (!authLoading && (token || localStorage.getItem('eduspark_token'))) {
+      loadAllAdminData();
+    }
+  }, [authLoading, token]);
 
   const loadAllAdminData = async () => {
     setIsLoading(true);

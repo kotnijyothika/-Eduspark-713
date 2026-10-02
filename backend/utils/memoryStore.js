@@ -32,9 +32,9 @@ const memoryLessons = [
     topicId: 'top-1',
     category: 'daily',
     contentType: 'video',
-    youtubeUrl: 'https://www.youtube.com/embed/n0FQSx012N8',
-    youtubeVideoId: 'n0FQSx012N8',
-    thumbnail: 'https://img.youtube.com/vi/n0FQSx012N8/hqdefault.jpg',
+    youtubeUrl: 'https://www.youtube.com/watch?v=CA9XLJpQp3c',
+    youtubeVideoId: 'CA9XLJpQp3c',
+    thumbnail: 'https://img.youtube.com/vi/CA9XLJpQp3c/hqdefault.jpg',
     teacherName: 'Prof. John Keating',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -54,8 +54,33 @@ const memoryLessons = [
     topic: 'Photosynthesis and Chlorophyll',
     topicId: 'top-sci-1',
     category: 'weekly',
-    contentType: 'pdf',
-    fileUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=EstPeBt9CyU',
+    youtubeVideoId: 'EstPeBt9CyU',
+    thumbnail: 'https://img.youtube.com/vi/EstPeBt9CyU/hqdefault.jpg',
+    teacherName: 'Prof. John Keating',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    _id: 'lesson-003',
+    id: 'lesson-003',
+    title: 'Exploring the Solar System & Planets',
+    description: 'Discover the sun, planets, and orbits in our solar system.',
+    grade: 'Grade 4',
+    className: 'Grade 4 - Alpha',
+    classId: 'class-001',
+    subject: 'Science',
+    subjectId: 'subj-3',
+    chapter: 'Chapter 2: Earth & Space',
+    chapterId: 'ch-sci-2',
+    topic: 'Solar System & Orbits',
+    topicId: 'top-sci-2',
+    category: 'daily',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=libKVRa01L8',
+    youtubeVideoId: 'libKVRa01L8',
+    thumbnail: 'https://img.youtube.com/vi/libKVRa01L8/hqdefault.jpg',
     teacherName: 'Prof. John Keating',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -122,6 +147,71 @@ const memoryQuizzes = [
       },
     ],
     isPublished: true,
+  },
+];
+
+const memoryQuestionBanks = [
+  {
+    _id: 'qb-001',
+    id: 'qb-001',
+    title: 'Grade 4 Math - Operations & Fractions Master Bank',
+    grade: 'Grade 4',
+    subject: 'Mathematics',
+    topic: 'Fractions & Arithmetic',
+    difficulty: 'Medium',
+    teacher: 'demo-teacher-id-002',
+    teacherName: 'Prof. John Keating',
+    totalQuestionsCount: 20,
+    isPublished: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    questions: [
+      { _id: 'qb-q1', question: 'What is 5 + 3?', options: ['6', '7', '8', '9'], correctAnswer: '8', explanation: '5 + 3 equals 8.', difficulty: 'Easy' },
+      { _id: 'qb-q2', question: 'What is 12 - 4?', options: ['6', '8', '10', '7'], correctAnswer: '8', explanation: '12 minus 4 is 8.', difficulty: 'Easy' },
+      { _id: 'qb-q3', question: 'Which fraction is equivalent to 1/2?', options: ['2/4', '3/8', '1/3', '4/5'], correctAnswer: '2/4', explanation: 'Multiply top and bottom by 2.', difficulty: 'Medium' },
+      { _id: 'qb-q4', question: 'What is 3/4 + 1/4?', options: ['4/8', '1', '2/4', '3/8'], correctAnswer: '1', explanation: '3/4 + 1/4 = 4/4 = 1.', difficulty: 'Medium' },
+      { _id: 'qb-q5', question: 'What is 7 x 6?', options: ['36', '42', '48', '54'], correctAnswer: '42', explanation: '7 multiplied by 6 is 42.', difficulty: 'Medium' },
+      { _id: 'qb-q6', question: 'What is 45 ÷ 5?', options: ['8', '9', '7', '6'], correctAnswer: '9', explanation: '45 divided by 5 is 9.', difficulty: 'Easy' },
+      { _id: 'qb-q7', question: 'Which of the following is an even number?', options: ['13', '21', '28', '35'], correctAnswer: '28', explanation: '28 is divisible by 2.', difficulty: 'Easy' },
+      { _id: 'qb-q8', question: 'What is the value of the digit 7 in 472?', options: ['7', '70', '700', '7000'], correctAnswer: '70', explanation: '7 is in the tens place so its value is 70.', difficulty: 'Medium' },
+      { _id: 'qb-q9', question: 'How many sides does a hexagon have?', options: ['5', '6', '7', '8'], correctAnswer: '6', explanation: 'A hexagon has 6 sides.', difficulty: 'Easy' },
+      { _id: 'qb-q10', question: 'What is 15 + 28?', options: ['33', '42', '43', '45'], correctAnswer: '43', explanation: '15 + 28 = 43.', difficulty: 'Medium' },
+      { _id: 'qb-q11', question: 'What is 100 - 37?', options: ['63', '73', '67', '53'], correctAnswer: '63', explanation: '100 - 37 = 63.', difficulty: 'Medium' },
+      { _id: 'qb-q12', question: 'Which fraction is greater than 1/2?', options: ['1/3', '1/4', '3/4', '2/5'], correctAnswer: '3/4', explanation: '3/4 is 0.75, which is greater than 0.5.', difficulty: 'Medium' },
+      { _id: 'qb-q13', question: 'What is the perimeter of a square with side length 5 cm?', options: ['10 cm', '15 cm', '20 cm', '25 cm'], correctAnswer: '20 cm', explanation: 'Perimeter = 4 x side = 4 x 5 = 20 cm.', difficulty: 'Hard' },
+      { _id: 'qb-q14', question: 'How many minutes are in 2 hours?', options: ['60', '100', '120', '180'], correctAnswer: '120', explanation: '1 hour = 60 minutes, 2 hours = 120 minutes.', difficulty: 'Easy' },
+      { _id: 'qb-q15', question: 'What is 8 x 9?', options: ['72', '64', '81', '76'], correctAnswer: '72', explanation: '8 x 9 = 72.', difficulty: 'Medium' },
+      { _id: 'qb-q16', question: 'What is 5/6 - 2/6?', options: ['3/6', '7/6', '1/6', '3/12'], correctAnswer: '3/6', explanation: '5/6 - 2/6 = 3/6.', difficulty: 'Medium' },
+      { _id: 'qb-q17', question: 'What is 50 x 4?', options: ['150', '200', '250', '300'], correctAnswer: '200', explanation: '50 multiplied by 4 is 200.', difficulty: 'Easy' },
+      { _id: 'qb-q18', question: 'How many centimeters are in 1 meter?', options: ['10', '100', '1000', '10000'], correctAnswer: '100', explanation: '1 meter = 100 centimeters.', difficulty: 'Easy' },
+      { _id: 'qb-q19', question: 'What is the next number in the pattern: 4, 8, 12, 16, __?', options: ['18', '20', '22', '24'], correctAnswer: '20', explanation: 'The pattern adds 4 each step.', difficulty: 'Easy' },
+      { _id: 'qb-q20', question: 'What is 64 ÷ 8?', options: ['6', '7', '8', '9'], correctAnswer: '8', explanation: '8 x 8 = 64, so 64 ÷ 8 = 8.', difficulty: 'Easy' },
+    ],
+  },
+];
+
+const memoryQuizAttempts = [
+  {
+    _id: 'attempt-001',
+    student: 'demo-student-id-004',
+    studentName: 'Leo Vance',
+    studentGrade: 'Grade 4',
+    questionBankId: 'qb-001',
+    quizTitle: 'Grade 4 Math - Operations & Fractions Master Bank',
+    subject: 'Mathematics',
+    topic: 'Fractions & Arithmetic',
+    selectedQuestionIds: ['qb-q1', 'qb-q3', 'qb-q6', 'qb-q15'],
+    score: 4,
+    totalQuestions: 4,
+    percentage: 100,
+    results: [
+      { questionId: 'qb-q1', question: 'What is 5 + 3?', studentAnswer: '8', correctAnswer: '8', isCorrect: true, explanation: '5 + 3 equals 8.' },
+      { questionId: 'qb-q3', question: 'Which fraction is equivalent to 1/2?', studentAnswer: '2/4', correctAnswer: '2/4', isCorrect: true, explanation: 'Multiply top and bottom by 2.' },
+      { questionId: 'qb-q6', question: 'What is 45 ÷ 5?', studentAnswer: '9', correctAnswer: '9', isCorrect: true, explanation: '45 divided by 5 is 9.' },
+      { questionId: 'qb-q15', question: 'What is 8 x 9?', studentAnswer: '72', correctAnswer: '72', isCorrect: true, explanation: '8 x 9 = 72.' },
+    ],
+    weakConcepts: [],
+    takenAt: new Date(Date.now() - 3600000),
   },
 ];
 
@@ -205,6 +295,8 @@ module.exports = {
   findByEmail: (email) => memoryUsers.find((u) => u.email.toLowerCase() === email.toLowerCase()),
   findById: (id) => memoryUsers.find((u) => u.id === id || u._id === id),
   findByRole: (role) => memoryUsers.filter((u) => u.role === role),
+  findByResetToken: (token) => memoryUsers.find((u) => u.resetPasswordToken === token && (!u.resetPasswordExpires || u.resetPasswordExpires > Date.now())),
+  findByVerifyToken: (token) => memoryUsers.find((u) => u.verificationToken === token),
   saveUser: (userData) => {
     const existingIndex = memoryUsers.findIndex((u) => (userData.id && u.id === userData.id) || u.email === userData.email);
     if (existingIndex >= 0) {
@@ -401,5 +493,64 @@ module.exports = {
     };
     module.exports.teacherMessages.push(newMsg);
     return newMsg;
+  },
+  questionBanks: memoryQuestionBanks,
+  quizAttempts: memoryQuizAttempts,
+  saveQuestionBank: (bankData) => {
+    const id = bankData.id || bankData._id || 'qb-' + Date.now();
+    const newBank = {
+      _id: id,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      totalQuestionsCount: bankData.questions ? bankData.questions.length : 20,
+      isPublished: true,
+      ...bankData,
+    };
+    // Ensure every question has an _id
+    if (Array.isArray(newBank.questions)) {
+      newBank.questions = newBank.questions.map((q, idx) => ({
+        _id: q._id || q.id || `qb-q-${Date.now()}-${idx}`,
+        ...q,
+      }));
+    }
+    memoryQuestionBanks.unshift(newBank);
+    return newBank;
+  },
+  updateQuestionBank: (id, bankData) => {
+    const idx = memoryQuestionBanks.findIndex((b) => b.id === id || b._id === id);
+    if (idx >= 0) {
+      if (Array.isArray(bankData.questions)) {
+        bankData.questions = bankData.questions.map((q, qIdx) => ({
+          _id: q._id || q.id || `qb-q-${Date.now()}-${qIdx}`,
+          ...q,
+        }));
+      }
+      memoryQuestionBanks[idx] = {
+        ...memoryQuestionBanks[idx],
+        ...bankData,
+        totalQuestionsCount: bankData.questions ? bankData.questions.length : memoryQuestionBanks[idx].totalQuestionsCount,
+        updatedAt: new Date(),
+      };
+      return memoryQuestionBanks[idx];
+    }
+    return null;
+  },
+  deleteQuestionBank: (id) => {
+    const idx = memoryQuestionBanks.findIndex((b) => b.id === id || b._id === id);
+    if (idx >= 0) return memoryQuestionBanks.splice(idx, 1)[0];
+    return null;
+  },
+  saveQuizAttempt: (attemptData) => {
+    const id = attemptData.id || attemptData._id || 'attempt-' + Date.now();
+    const newAttempt = {
+      _id: id,
+      id,
+      takenAt: new Date(),
+      createdAt: new Date(),
+      ...attemptData,
+    };
+    memoryQuizAttempts.unshift(newAttempt);
+    return newAttempt;
   },
 };

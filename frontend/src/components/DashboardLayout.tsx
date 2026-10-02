@@ -104,7 +104,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <p className="text-[10px] text-slate-500">{currentProfile.subtitle}</p>
               </div>
               <button
-                onClick={logout}
+                type="button"
+                onClick={() => {
+                  console.log('[DashboardLayout] User clicked header sign out button');
+                  logout('User clicked Sign Out button in Dashboard header');
+                }}
                 title="Sign Out"
                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1 cursor-pointer"
               >

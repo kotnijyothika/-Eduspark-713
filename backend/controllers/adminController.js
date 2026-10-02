@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const ClassModel = require('../models/Class');
@@ -81,14 +82,14 @@ exports.getAdminStats = async (req, res) => {
 exports.getTeachers = async (req, res) => {
   try {
     let teachers = [];
-    try {
+    if (mongoose.connection.readyState === 1) {
       teachers = await User.find({ role: 'teacher' }).select('-password');
-    } catch (e) {
+    } else {
       teachers = memoryStore.findByRole('teacher');
     }
-    if (!teachers.length) teachers = memoryStore.findByRole('teacher');
     res.status(200).json({ success: true, count: teachers.length, data: teachers });
   } catch (error) {
+    console.error('getTeachers error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch teachers.' });
   }
 };
@@ -99,40 +100,47 @@ exports.createTeacher = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email, and password required.' });
     }
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
 
-    try {
-      const teacher = await User.create({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'teacher',
-        subject: subject || 'General Primary',
-        grade: grade || 'Grade 4',
-        assignedClass: assignedClass || '',
-        subjects: subjects || (subject ? [subject] : ['Mathematics']),
-        grades: grades || (grade ? [grade] : ['Grade 4']),
-        isVerified: true,
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
       });
-      return res.status(201).json({ success: true, message: 'Teacher created successfully', data: teacher });
-    } catch (dbErr) {
-      const memoryTeacher = memoryStore.saveUser({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'teacher',
-        subject: subject || 'General Primary',
-        grade: grade || 'Grade 4',
-        assignedClass: assignedClass || '',
-        subjects: subjects || (subject ? [subject] : ['Mathematics']),
-        grades: grades || (grade ? [grade] : ['Grade 4']),
-        isVerified: true,
-      });
-      return res.status(201).json({ success: true, message: 'Teacher created (Demo mode)', data: memoryTeacher });
     }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+
+    // Pass plain password to User.create() so userSchema.pre('save') hashes it once
+    const teacher = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: 'teacher',
+      subject: subject || 'General Primary',
+      grade: grade || 'Grade 4',
+      assignedClass: assignedClass || '',
+      subjects: subjects || (subject ? [subject] : ['Mathematics']),
+      grades: grades || (grade ? [grade] : ['Grade 4']),
+      isVerified: true,
+    });
+
+    console.log(`[AUTH] Admin created teacher in MongoDB: _id=${teacher._id}`);
+    return res.status(201).json({ success: true, message: 'Teacher created successfully', data: teacher });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error creating teacher.' });
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+    console.error('createTeacher error:', error);
+    res.status(500).json({ success: false, message: 'Error creating teacher: ' + error.message });
   }
 };
 
@@ -141,7 +149,7 @@ exports.updateTeacher = async (req, res) => {
     const { id } = req.params;
     const { name, email, subject, grade, assignedClass, subjects, grades } = req.body;
 
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       const updateData = { name, email, subject, grade, assignedClass };
       if (subjects) updateData.subjects = subjects;
       if (grades) updateData.grades = grades;
@@ -152,7 +160,7 @@ exports.updateTeacher = async (req, res) => {
         { new: true, runValidators: true }
       );
       if (teacher) return res.status(200).json({ success: true, message: 'Teacher updated', data: teacher });
-    } catch (e) {}
+    }
 
     const updated = memoryStore.saveUser({ id, name, email, subject, grade, assignedClass, role: 'teacher', subjects, grades });
     res.status(200).json({ success: true, message: 'Teacher updated', data: updated });
@@ -164,9 +172,9 @@ exports.updateTeacher = async (req, res) => {
 exports.deleteTeacher = async (req, res) => {
   try {
     const { id } = req.params;
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       await User.findByIdAndDelete(id);
-    } catch (e) {}
+    }
     memoryStore.deleteUser(id);
     res.status(200).json({ success: true, message: 'Teacher deleted successfully.' });
   } catch (error) {
@@ -180,14 +188,14 @@ exports.deleteTeacher = async (req, res) => {
 exports.getStudents = async (req, res) => {
   try {
     let students = [];
-    try {
+    if (mongoose.connection.readyState === 1) {
       students = await User.find({ role: 'student' }).select('-password');
-    } catch (e) {
+    } else {
       students = memoryStore.findByRole('student');
     }
-    if (!students.length) students = memoryStore.findByRole('student');
     res.status(200).json({ success: true, count: students.length, data: students });
   } catch (error) {
+    console.error('getStudents error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch students.' });
   }
 };
@@ -198,36 +206,45 @@ exports.createStudent = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email, and password required.' });
     }
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
 
-    try {
-      const student = await User.create({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'student',
-        grade: grade || 'Grade 4',
-        assignedClass: assignedClass || '',
-        parentName: parentName || '',
-        isVerified: true,
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
       });
-      return res.status(201).json({ success: true, message: 'Student created successfully', data: student });
-    } catch (dbErr) {
-      const memoryStudent = memoryStore.saveUser({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'student',
-        grade: grade || 'Grade 4',
-        assignedClass: assignedClass || '',
-        parentName: parentName || '',
-        isVerified: true,
-      });
-      return res.status(201).json({ success: true, message: 'Student created (Demo mode)', data: memoryStudent });
     }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+
+    // Pass plain password to User.create() so userSchema.pre('save') hashes it once
+    const student = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: 'student',
+      grade: grade || 'Grade 4',
+      assignedClass: assignedClass || '',
+      parentName: parentName || '',
+      isVerified: true,
+    });
+
+    console.log(`[AUTH] Admin created student in MongoDB: _id=${student._id}`);
+    return res.status(201).json({ success: true, message: 'Student created successfully', data: student });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error creating student.' });
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+    console.error('createStudent error:', error);
+    res.status(500).json({ success: false, message: 'Error creating student: ' + error.message });
   }
 };
 
@@ -236,14 +253,14 @@ exports.updateStudent = async (req, res) => {
     const { id } = req.params;
     const { name, email, grade, assignedClass, parentName } = req.body;
 
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       const student = await User.findByIdAndUpdate(
         id,
         { name, email, grade, assignedClass, parentName },
         { new: true, runValidators: true }
       );
       if (student) return res.status(200).json({ success: true, message: 'Student updated', data: student });
-    } catch (e) {}
+    }
 
     const updated = memoryStore.saveUser({ id, name, email, grade, assignedClass, parentName, role: 'student' });
     res.status(200).json({ success: true, message: 'Student updated', data: updated });
@@ -255,9 +272,9 @@ exports.updateStudent = async (req, res) => {
 exports.deleteStudent = async (req, res) => {
   try {
     const { id } = req.params;
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       await User.findByIdAndDelete(id);
-    } catch (e) {}
+    }
     memoryStore.deleteUser(id);
     res.status(200).json({ success: true, message: 'Student deleted successfully.' });
   } catch (error) {
@@ -271,14 +288,14 @@ exports.deleteStudent = async (req, res) => {
 exports.getParents = async (req, res) => {
   try {
     let parents = [];
-    try {
+    if (mongoose.connection.readyState === 1) {
       parents = await User.find({ role: 'parent' }).select('-password');
-    } catch (e) {
+    } else {
       parents = memoryStore.findByRole('parent');
     }
-    if (!parents.length) parents = memoryStore.findByRole('parent');
     res.status(200).json({ success: true, count: parents.length, data: parents });
   } catch (error) {
+    console.error('getParents error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch parents.' });
   }
 };
@@ -289,34 +306,44 @@ exports.createParent = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, message: 'Name, email, and password required.' });
     }
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
 
-    try {
-      const parent = await User.create({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'parent',
-        phone: phone || '',
-        linkedStudent: linkedStudent || '',
-        isVerified: true,
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
       });
-      return res.status(201).json({ success: true, message: 'Parent created successfully', data: parent });
-    } catch (dbErr) {
-      const memoryParent = memoryStore.saveUser({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role: 'parent',
-        phone: phone || '',
-        linkedStudent: linkedStudent || '',
-        isVerified: true,
-      });
-      return res.status(201).json({ success: true, message: 'Parent created (Demo mode)', data: memoryParent });
     }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+
+    // Pass plain password to User.create() so userSchema.pre('save') hashes it once
+    const parent = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role: 'parent',
+      phone: phone || '',
+      linkedStudent: linkedStudent || '',
+      isVerified: true,
+    });
+
+    console.log(`[AUTH] Admin created parent in MongoDB: _id=${parent._id}`);
+    return res.status(201).json({ success: true, message: 'Parent created successfully', data: parent });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error creating parent.' });
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
+      });
+    }
+    console.error('createParent error:', error);
+    res.status(500).json({ success: false, message: 'Error creating parent: ' + error.message });
   }
 };
 
@@ -325,14 +352,14 @@ exports.updateParent = async (req, res) => {
     const { id } = req.params;
     const { name, email, phone, linkedStudent } = req.body;
 
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       const parent = await User.findByIdAndUpdate(
         id,
         { name, email, phone, linkedStudent },
         { new: true, runValidators: true }
       );
       if (parent) return res.status(200).json({ success: true, message: 'Parent updated', data: parent });
-    } catch (e) {}
+    }
 
     const updated = memoryStore.saveUser({ id, name, email, phone, linkedStudent, role: 'parent' });
     res.status(200).json({ success: true, message: 'Parent updated', data: updated });
@@ -344,9 +371,9 @@ exports.updateParent = async (req, res) => {
 exports.deleteParent = async (req, res) => {
   try {
     const { id } = req.params;
-    try {
+    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(id)) {
       await User.findByIdAndDelete(id);
-    } catch (e) {}
+    }
     memoryStore.deleteUser(id);
     res.status(200).json({ success: true, message: 'Parent deleted successfully.' });
   } catch (error) {

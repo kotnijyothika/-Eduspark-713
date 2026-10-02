@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const ParentDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -127,10 +127,12 @@ export const ParentDashboard: React.FC = () => {
   const [notification, setNotification] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Load Data on Mount
+  // Load Data on Auth Readiness
   useEffect(() => {
-    loadParentDashboardData();
-  }, []);
+    if (!authLoading && (token || localStorage.getItem('eduspark_token'))) {
+      loadParentDashboardData();
+    }
+  }, [authLoading, token]);
 
   const loadParentDashboardData = async () => {
     setIsLoading(true);

@@ -16,11 +16,22 @@ export const Login: React.FC = () => {
   const { login, getRoleDashboardPath } = useAuth();
   const navigate = useNavigate();
 
+  const demoEmails: Record<UserRole, string> = {
+    student: 'student@eduspark.ai',
+    teacher: 'teacher@eduspark.ai',
+    parent: 'parent@eduspark.ai',
+    admin: 'admin@eduspark.ai',
+  };
+
   const handleRoleChange = (selectedRole: UserRole) => {
     setRole(selectedRole);
-    setEmail(`${selectedRole}@eduspark.ai`);
-    setPassword('password123');
     setError('');
+    // Only autofill if the email is empty or currently holds one of the default demo emails
+    const isDemoEmail = !email || Object.values(demoEmails).includes(email.trim());
+    if (isDemoEmail) {
+      setEmail(demoEmails[selectedRole]);
+      setPassword('password123');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,9 +51,14 @@ export const Login: React.FC = () => {
     setIsSubmitting(true);
 
     try {
+      console.log('[Login Page] Submitting login form:', { email, role });
       const userRole = await login(email, password, role);
-      navigate(getRoleDashboardPath(userRole));
+      console.log('[Login Page] Login successful, received userRole:', userRole);
+      const redirectPath = getRoleDashboardPath(userRole);
+      console.log('[Login Page] Navigating to dashboard:', redirectPath);
+      navigate(redirectPath);
     } catch (err: any) {
+      console.error('[Login Page] Login error:', err.message || err);
       setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsSubmitting(false);
@@ -179,6 +195,14 @@ export const Login: React.FC = () => {
               )}
             </button>
           </form>
+
+          {/* Create Account link */}
+          <div className="mt-4 text-center text-xs text-slate-500">
+            Don't have an account?{' '}
+            <Link to="/signup" className="font-bold text-blue-600 hover:text-blue-800 hover:underline">
+              Create Account
+            </Link>
+          </div>
 
           {/* Quick autofill helper */}
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">

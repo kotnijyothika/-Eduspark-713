@@ -22,6 +22,13 @@ const {
   deleteQuiz,
   getAttendance,
   markAttendance,
+  getQuestionBanks,
+  getQuestionBankById,
+  createQuestionBank,
+  updateQuestionBank,
+  deleteQuestionBank,
+  getQuestionBankResults,
+  getAllTeacherQuizResults,
 } = require('../controllers/teacherController');
 
 // Protect all routes; require role 'teacher' or 'admin'
@@ -50,12 +57,21 @@ router.route('/lessons/:id').put(updateVideo).delete(deleteLesson);
 router.route('/homeworks').get(getHomeworks).post(requireSubjectOwnership, createHomework);
 router.put('/homeworks/:hwId/grade/:subId', gradeSubmission);
 
-// Quiz & AI Quiz Generator
+// Quiz & AI Quiz Generator (Legacy + AI Option)
 router.get('/quizzes', getQuizzes);
 router.post('/quizzes/generate-ai', requireSubjectOwnership, generateAiQuiz);
 router.post('/quizzes/regenerate-question', regenerateQuestion);
 router.post('/quizzes/save', saveQuiz);
 router.delete('/quizzes/:id', deleteQuiz);
+
+// Teacher Question Bank System (20 Questions Bank & Random Selection)
+router.get('/question-banks', getQuestionBanks);
+router.get('/question-banks/results/all', getAllTeacherQuizResults);
+router.get('/question-banks/:id', getQuestionBankById);
+router.post('/question-banks', createQuestionBank);
+router.put('/question-banks/:id', updateQuestionBank);
+router.delete('/question-banks/:id', deleteQuestionBank);
+router.get('/question-banks/:id/results', getQuestionBankResults);
 
 // Student Analytics
 router.get('/analytics', getStudentAnalytics);

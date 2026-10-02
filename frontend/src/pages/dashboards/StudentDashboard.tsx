@@ -23,6 +23,10 @@ import {
   RefreshCw,
   Mic,
   Volume2,
+  HelpCircle,
+  RotateCcw,
+  Check,
+  Layers,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -38,8 +42,84 @@ interface ChatMessage {
   };
 }
 
+// Verified educational lessons fallback
+const DEFAULT_EDUCATIONAL_LESSONS = [
+  {
+    _id: 'lesson-001',
+    id: 'lesson-001',
+    title: 'Understanding Equivalent Fractions & Parts',
+    description: 'Learn how to visualize and calculate fractions with clear visual pie models.',
+    grade: 'Grade 4',
+    className: 'Grade 4 - Alpha',
+    classId: 'class-001',
+    subject: 'Mathematics',
+    chapter: 'Chapter 1: Fractions & Decimals',
+    topic: 'Fractions Are Parts',
+    category: 'daily',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=CA9XLJpQp3c',
+    youtubeVideoId: 'CA9XLJpQp3c',
+    thumbnail: 'https://img.youtube.com/vi/CA9XLJpQp3c/hqdefault.jpg',
+    teacherName: 'Prof. John Keating',
+  },
+  {
+    _id: 'lesson-002',
+    id: 'lesson-002',
+    title: 'Photosynthesis & Plant Life Cycle',
+    description: 'Weekly concept covering how green plants produce oxygen and food from sunlight.',
+    grade: 'Grade 4',
+    className: 'Grade 4 - Alpha',
+    classId: 'class-001',
+    subject: 'Science',
+    chapter: 'Chapter 1: Plants and Their Parts',
+    topic: 'Photosynthesis and Chlorophyll',
+    category: 'weekly',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=EstPeBt9CyU',
+    youtubeVideoId: 'EstPeBt9CyU',
+    thumbnail: 'https://img.youtube.com/vi/EstPeBt9CyU/hqdefault.jpg',
+    teacherName: 'Prof. John Keating',
+  },
+  {
+    _id: 'lesson-003',
+    id: 'lesson-003',
+    title: 'Exploring the Solar System & Planets',
+    description: 'Discover the sun, planets, and orbits in our solar system with fun animations.',
+    grade: 'Grade 4',
+    className: 'Grade 4 - Alpha',
+    classId: 'class-001',
+    subject: 'Science',
+    chapter: 'Chapter 2: Earth & Space',
+    topic: 'Solar System & Orbits',
+    category: 'daily',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=libKVRa01L8',
+    youtubeVideoId: 'libKVRa01L8',
+    thumbnail: 'https://img.youtube.com/vi/libKVRa01L8/hqdefault.jpg',
+    teacherName: 'Prof. John Keating',
+  },
+  {
+    _id: 'lesson-004',
+    id: 'lesson-004',
+    title: 'How Plants Make Food & Energy',
+    description: 'Explore plant biology and how roots, stems, and leaves work together.',
+    grade: 'Grade 4',
+    className: 'Grade 4 - Alpha',
+    classId: 'class-001',
+    subject: 'Science',
+    chapter: 'Chapter 1: Plants and Their Parts',
+    topic: 'Plant Nutrition',
+    category: 'weekly',
+    contentType: 'video',
+    youtubeUrl: 'https://www.youtube.com/watch?v=D1Ymc311XS8',
+    youtubeVideoId: 'D1Ymc311XS8',
+    thumbnail: 'https://img.youtube.com/vi/D1Ymc311XS8/hqdefault.jpg',
+    teacherName: 'Prof. John Keating',
+  },
+];
+
 export const StudentDashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -48,7 +128,7 @@ export const StudentDashboard: React.FC = () => {
 
   // State Data
   const [profile, setProfile] = useState<any>({ streak: 5, stars: 320, coins: 250, grade: 'Grade 4' });
-  const [lessons, setLessons] = useState<any[]>([]);
+  const [lessons, setLessons] = useState<any[]>(DEFAULT_EDUCATIONAL_LESSONS);
   const [homeworks, setHomeworks] = useState<any[]>([]);
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [achievements, setAchievements] = useState<any[]>([
@@ -60,6 +140,10 @@ export const StudentDashboard: React.FC = () => {
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Video error & thumbnail error tracking
+  const [brokenThumbnails, setBrokenThumbnails] = useState<Record<string, boolean>>({});
+  const [videoPlayerError, setVideoPlayerError] = useState<boolean>(false);
 
   // Toast Notification
   const [notification, setNotification] = useState<string>('');
@@ -102,6 +186,7 @@ export const StudentDashboard: React.FC = () => {
   const [userQuizAnswers, setUserQuizAnswers] = useState<Record<number, string>>({});
   const [quizResult, setQuizResult] = useState<any | null>(null);
   const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
+  const [isStartingQuiz, setIsStartingQuiz] = useState(false);
 
   // Voice Tutor State
   const [isListeningVoice, setIsListeningVoice] = useState(false);
@@ -115,10 +200,12 @@ export const StudentDashboard: React.FC = () => {
     }
   }, [chatMessages, isAiThinking]);
 
-  // Load Dashboard Data
+  // Load Dashboard Data once authentication is ready
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (!authLoading && (token || localStorage.getItem('eduspark_token'))) {
+      loadDashboardData();
+    }
+  }, [authLoading, token]);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
@@ -126,7 +213,19 @@ export const StudentDashboard: React.FC = () => {
       const res = await fetchApi<any>('/student/dashboard');
       if (res.success) {
         setProfile(res.profile || { streak: 5, stars: 320, coins: 250, grade: 'Grade 4' });
-        setLessons(res.lessons || []);
+        const rawLessons = (res.lessons && res.lessons.length > 0) ? res.lessons : DEFAULT_EDUCATIONAL_LESSONS;
+        const sanitizedLessons = rawLessons.map((l: any) => {
+          if (l.youtubeVideoId === 'n0FQSx012N8' || (l.youtubeUrl && l.youtubeUrl.includes('n0FQSx012N8'))) {
+            return {
+              ...l,
+              youtubeVideoId: 'CA9XLJpQp3c',
+              youtubeUrl: 'https://www.youtube.com/watch?v=CA9XLJpQp3c',
+              thumbnail: 'https://img.youtube.com/vi/CA9XLJpQp3c/hqdefault.jpg',
+            };
+          }
+          return l;
+        });
+        setLessons(sanitizedLessons);
         setHomeworks(res.homeworks || []);
         setQuizzes(res.quizzes || []);
         if (res.achievements && res.achievements.length) {
@@ -141,7 +240,7 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, _type?: 'success' | 'error' | 'info') => {
     setNotification(msg);
     setTimeout(() => setNotification(''), 4000);
   };
@@ -178,11 +277,15 @@ export const StudentDashboard: React.FC = () => {
 
   // Watch Video Click
   const handleWatchVideo = (lesson: any) => {
-    const videoId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
+    let videoId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
+    if (videoId === 'n0FQSx012N8') {
+      videoId = 'CA9XLJpQp3c';
+    }
     if (!videoId) {
       showToast('This lesson does not have a valid video link.');
       return;
     }
+    setVideoPlayerError(false);
     setActiveVideo({
       isOpen: true,
       videoId,
@@ -196,7 +299,39 @@ export const StudentDashboard: React.FC = () => {
   // Ask AI Homework Helper with Context
   const handleSendAiMessage = async (customPrompt?: string) => {
     const promptToSend = (customPrompt || aiInput).trim();
-    if (!promptToSend || isAiThinking) return;
+    if (!promptToSend) {
+      showToast('Please enter a question for the AI Homework Helper.');
+      return;
+    }
+    if (isAiThinking) return;
+
+    // Detect subject from context (selected homework, active video lesson, or question content)
+    let currentSubject = selectedHw?.subject || activeVideo?.subject || 'Mathematics';
+    const qLower = promptToSend.toLowerCase();
+    if (
+      qLower.includes('plant') ||
+      qLower.includes('photosynthesis') ||
+      qLower.includes('cell') ||
+      qLower.includes('energy') ||
+      qLower.includes('gravity') ||
+      qLower.includes('magnet') ||
+      qLower.includes('water cycle') ||
+      qLower.includes('solar') ||
+      qLower.includes('ecosystem')
+    ) {
+      currentSubject = 'Science';
+    } else if (
+      qLower.includes('noun') ||
+      qLower.includes('verb') ||
+      qLower.includes('grammar') ||
+      qLower.includes('sentence') ||
+      qLower.includes('simile') ||
+      qLower.includes('poem') ||
+      qLower.includes('antonym') ||
+      qLower.includes('synonym')
+    ) {
+      currentSubject = 'English';
+    }
 
     const userMsgId = Date.now().toString();
     const newMessages: ChatMessage[] = [
@@ -220,7 +355,7 @@ export const StudentDashboard: React.FC = () => {
         body: JSON.stringify({
           question: promptToSend,
           class: profile.grade || user?.grade || 'Grade 4',
-          subject: 'Mathematics',
+          subject: currentSubject,
           history: historyPayload,
         }),
       });
@@ -241,7 +376,7 @@ export const StudentDashboard: React.FC = () => {
         };
         setChatMessages((prev) => [...prev, aiMsg]);
       } else {
-        throw new Error(res.message || 'Failed to get answer');
+        throw new Error(res.message || 'Failed to get answer from AI Helper');
       }
     } catch (err: any) {
       console.error('AI Helper Error:', err);
@@ -349,23 +484,83 @@ export const StudentDashboard: React.FC = () => {
     }
   };
 
+  // Start Quiz (Securely fetches 4 random questions for teacher banks)
+  const handleStartQuiz = async (quiz: any) => {
+    setUserQuizAnswers({});
+    setQuizResult(null);
+
+    if (quiz.isTeacherBank || quiz.quizType === 'teacher_bank') {
+      setIsStartingQuiz(true);
+      try {
+        const bankId = quiz._id || quiz.id;
+        const res = await fetchApi<any>(`/student/quiz/bank/${bankId}/start`);
+        if (res.success && res.questions) {
+          setActiveQuiz({
+            ...quiz,
+            bankId: res.bankId,
+            quizTitle: res.quizTitle,
+            subject: res.subject,
+            topic: res.topic,
+            grade: res.grade,
+            questions: res.questions,
+            isTeacherBank: true,
+          });
+        } else {
+          throw new Error(res.message || 'Failed to initialize quiz attempt.');
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Error starting teacher quiz.');
+      } finally {
+        setIsStartingQuiz(false);
+      }
+    } else {
+      setActiveQuiz(quiz);
+    }
+  };
+
   // Submit Quiz Answers
   const handleSubmitQuiz = async (quizId: string) => {
     setIsSubmittingQuiz(true);
     try {
-      const res = await fetchApi<any>(`/student/quiz/${quizId}/submit`, {
-        method: 'POST',
-        body: JSON.stringify({ answers: userQuizAnswers }),
-      });
+      if (activeQuiz?.isTeacherBank || activeQuiz?.quizType === 'teacher_bank') {
+        const bankId = activeQuiz.bankId || activeQuiz._id || activeQuiz.id;
+        const selectedQuestionIds = (activeQuiz.questions || []).map((q: any) => (q._id || q.id || '').toString());
+        const res = await fetchApi<any>(`/student/quiz/bank/${bankId}/submit`, {
+          method: 'POST',
+          body: JSON.stringify({
+            selectedQuestionIds,
+            answers: userQuizAnswers,
+          }),
+        });
 
-      if (res.success) {
-        setQuizResult(res);
-        setProfile((prev: any) => ({
-          ...prev,
-          stars: (prev.stars || 0) + (res.starsEarned || 20),
-          coins: (prev.coins || 0) + (res.coinsEarned || 50),
-        }));
-        showToast('Quiz submitted! Check your score! 🌟');
+        if (res.success) {
+          setQuizResult(res);
+          setProfile((prev: any) => ({
+            ...prev,
+            stars: (prev.stars || 0) + (res.starsEarned || 20),
+            coins: (prev.coins || 0) + (res.coinsEarned || 50),
+          }));
+          showToast('🎉 Quiz evaluated! Check your breakdown below!');
+        } else {
+          throw new Error(res.message || 'Quiz submission failed.');
+        }
+      } else {
+        const res = await fetchApi<any>(`/student/quiz/${quizId}/submit`, {
+          method: 'POST',
+          body: JSON.stringify({ answers: userQuizAnswers }),
+        });
+
+        if (res.success) {
+          setQuizResult(res);
+          setProfile((prev: any) => ({
+            ...prev,
+            stars: (prev.stars || 0) + (res.starsEarned || 20),
+            coins: (prev.coins || 0) + (res.coinsEarned || 50),
+          }));
+          showToast('Quiz submitted! Check your score! 🌟');
+        } else {
+          throw new Error(res.message || 'Quiz submission failed.');
+        }
       }
     } catch (err: any) {
       showToast(err.message || 'Error submitting quiz.');
@@ -378,45 +573,77 @@ export const StudentDashboard: React.FC = () => {
   const handleStartVoiceTutor = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setVoiceQuery('How do green plants turn sunlight into food?');
-      triggerVoiceResponse('How do green plants turn sunlight into food?');
+      const fallbackQuery = 'How do green plants turn sunlight into food?';
+      setVoiceQuery(fallbackQuery);
+      showToast('Speech recognition not supported in this browser. Asking sample question!', 'success');
+      triggerVoiceResponse(fallbackQuery);
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-US';
+      recognition.interimResults = false;
 
-    recognition.onstart = () => setIsListeningVoice(true);
-    recognition.onend = () => setIsListeningVoice(false);
+      recognition.onstart = () => setIsListeningVoice(true);
+      recognition.onend = () => setIsListeningVoice(false);
 
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setVoiceQuery(transcript);
-      triggerVoiceResponse(transcript);
-    };
+      recognition.onerror = (event: any) => {
+        setIsListeningVoice(false);
+        if (event.error === 'not-allowed') {
+          showToast('Microphone access was denied. Please allow microphone permissions in your browser settings.', 'error');
+        } else if (event.error === 'no-speech') {
+          showToast('No speech was detected. Please try tapping and speaking again.', 'error');
+        } else {
+          showToast(`Voice recognition error (${event.error || 'unknown'}). Try again.`, 'error');
+        }
+      };
 
-    recognition.start();
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript;
+        if (transcript && transcript.trim()) {
+          setVoiceQuery(transcript.trim());
+          triggerVoiceResponse(transcript.trim());
+        } else {
+          showToast('Could not understand speech input. Please try speaking clearly.', 'error');
+        }
+      };
+
+      recognition.start();
+    } catch (err: any) {
+      console.error('SpeechRecognition start error:', err);
+      showToast('Could not start microphone. Please check permissions.', 'error');
+    }
   };
 
   const triggerVoiceResponse = async (q: string) => {
+    if (!q || !q.trim()) {
+      showToast('Please speak or type a valid question.');
+      return;
+    }
+
     try {
-      const res = await fetchApi<any>('/ai/homework', {
+      const res = await fetchApi<any>('/student/voice-tutor', {
         method: 'POST',
-        body: JSON.stringify({ question: q, class: 'Grade 4' }),
+        body: JSON.stringify({
+          voiceQuestion: q.trim(),
+          grade: profile.grade || user?.grade || 'Grade 4',
+        }),
       });
-      if (res.success && res.data) {
-        const spoken = res.data.finalAnswer || res.data.explanation || 'Great question!';
-        setVoiceResponse(spoken);
-        if ('speechSynthesis' in window) {
-          const utterance = new SpeechSynthesisUtterance(spoken);
-          utterance.pitch = 1.2;
-          utterance.rate = 0.95;
-          window.speechSynthesis.speak(utterance);
-        }
+
+      const spoken = res.spokenResponse || res.data?.spokenResponse || res.spokenText || 'That is a wonderful question!';
+      setVoiceResponse(spoken);
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Cancel any ongoing speech
+        const utterance = new SpeechSynthesisUtterance(spoken);
+        utterance.pitch = 1.15;
+        utterance.rate = 0.95;
+        window.speechSynthesis.speak(utterance);
       }
-    } catch (err) {
-      showToast('Voice tutor error.');
+    } catch (err: any) {
+      console.error('Voice Tutor API Error:', err);
+      showToast(err.message || 'Voice tutor is temporarily unavailable. Please try again.', 'error');
     }
   };
 
@@ -569,8 +796,12 @@ export const StudentDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {filteredLessons.slice(0, 4).map((lesson) => {
-                    const videoId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
-                    const thumb = lesson.thumbnail || (videoId ? getYouTubeThumbnailUrl(videoId) : null);
+                    const rawId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
+                    const videoId = rawId === 'n0FQSx012N8' ? 'CA9XLJpQp3c' : rawId;
+                    const thumb = rawId === 'n0FQSx012N8'
+                      ? 'https://img.youtube.com/vi/CA9XLJpQp3c/hqdefault.jpg'
+                      : (lesson.thumbnail || (videoId ? getYouTubeThumbnailUrl(videoId) : null));
+                    const isBroken = brokenThumbnails[lesson._id || lesson.id];
 
                     return (
                       <div
@@ -578,11 +809,18 @@ export const StudentDashboard: React.FC = () => {
                         className="border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-xs transition-all flex flex-col justify-between group bg-white"
                       >
                         <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-pointer" onClick={() => handleWatchVideo(lesson)}>
-                          {thumb ? (
-                            <img src={thumb} alt={lesson.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          {thumb && !isBroken ? (
+                            <img
+                              src={thumb}
+                              alt={lesson.title}
+                              onError={() => setBrokenThumbnails((prev) => ({ ...prev, [lesson._id || lesson.id]: true }))}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
-                              <Play className="w-8 h-8 opacity-50" />
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-slate-300 p-4 text-center">
+                              <Play className="w-8 h-8 text-blue-400 mb-1" />
+                              <span className="text-[11px] font-bold text-white">{lesson.subject || 'Lesson Video'}</span>
+                              <span className="text-[10px] text-slate-400">Click to Play Lesson</span>
                             </div>
                           )}
                           <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
@@ -606,11 +844,10 @@ export const StudentDashboard: React.FC = () => {
                                   if (id) handleToggleBookmark(id);
                                 }}
                                 title={bookmarks.includes(lesson._id || lesson.id) ? 'Bookmarked' : 'Bookmark lesson'}
-                                className={`p-1 rounded-md transition-colors cursor-pointer ${
-                                  bookmarks.includes(lesson._id || lesson.id)
+                                className={`p-1 rounded-md transition-colors cursor-pointer ${bookmarks.includes(lesson._id || lesson.id)
                                     ? 'text-amber-500 hover:text-amber-600 bg-amber-50'
                                     : 'text-slate-300 hover:text-slate-600 hover:bg-slate-50'
-                                }`}
+                                  }`}
                               >
                                 <Bookmark className={`w-3.5 h-3.5 ${bookmarks.includes(lesson._id || lesson.id) ? 'fill-amber-500' : ''}`} />
                               </button>
@@ -708,8 +945,12 @@ export const StudentDashboard: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredLessons.map((lesson) => {
-                const videoId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
-                const thumb = lesson.thumbnail || (videoId ? getYouTubeThumbnailUrl(videoId) : null);
+                const rawId = lesson.youtubeVideoId || extractYouTubeVideoId(lesson.youtubeUrl);
+                const videoId = rawId === 'n0FQSx012N8' ? 'CA9XLJpQp3c' : rawId;
+                const thumb = rawId === 'n0FQSx012N8'
+                  ? 'https://img.youtube.com/vi/CA9XLJpQp3c/hqdefault.jpg'
+                  : (lesson.thumbnail || (videoId ? getYouTubeThumbnailUrl(videoId) : null));
+                const isBroken = brokenThumbnails[lesson._id || lesson.id];
 
                 return (
                   <div
@@ -717,11 +958,18 @@ export const StudentDashboard: React.FC = () => {
                     className="border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-xs transition-all flex flex-col justify-between group bg-white"
                   >
                     <div className="relative aspect-video bg-slate-900 overflow-hidden cursor-pointer" onClick={() => handleWatchVideo(lesson)}>
-                      {thumb ? (
-                        <img src={thumb} alt={lesson.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      {thumb && !isBroken ? (
+                        <img
+                          src={thumb}
+                          alt={lesson.title}
+                          onError={() => setBrokenThumbnails((prev) => ({ ...prev, [lesson._id || lesson.id]: true }))}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-800 text-slate-400">
-                          <Play className="w-8 h-8 opacity-50" />
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900 text-slate-300 p-4 text-center">
+                          <Play className="w-8 h-8 text-blue-400 mb-1" />
+                          <span className="text-[11px] font-bold text-white">{lesson.subject || 'Lesson Video'}</span>
+                          <span className="text-[10px] text-slate-400">Click to Play Lesson</span>
                         </div>
                       )}
                       <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center">
@@ -745,11 +993,10 @@ export const StudentDashboard: React.FC = () => {
                               if (id) handleToggleBookmark(id);
                             }}
                             title={bookmarks.includes(lesson._id || lesson.id) ? 'Bookmarked' : 'Bookmark lesson'}
-                            className={`p-1 rounded-md transition-colors cursor-pointer ${
-                              bookmarks.includes(lesson._id || lesson.id)
+                            className={`p-1 rounded-md transition-colors cursor-pointer ${bookmarks.includes(lesson._id || lesson.id)
                                 ? 'text-amber-500 hover:text-amber-600 bg-amber-50'
                                 : 'text-slate-300 hover:text-slate-600 hover:bg-slate-50'
-                            }`}
+                              }`}
                           >
                             <Bookmark className={`w-3.5 h-3.5 ${bookmarks.includes(lesson._id || lesson.id) ? 'fill-amber-500' : ''}`} />
                           </button>
@@ -859,9 +1106,8 @@ export const StudentDashboard: React.FC = () => {
             <div className="pt-4">
               <button
                 onClick={handleStartVoiceTutor}
-                className={`px-6 py-3 rounded-2xl font-bold text-xs text-white shadow-md transition-all cursor-pointer ${
-                  isListeningVoice ? 'bg-rose-500 animate-pulse' : 'bg-pink-600 hover:bg-pink-700'
-                }`}
+                className={`px-6 py-3 rounded-2xl font-bold text-xs text-white shadow-md transition-all cursor-pointer ${isListeningVoice ? 'bg-rose-500 animate-pulse' : 'bg-pink-600 hover:bg-pink-700'
+                  }`}
               >
                 {isListeningVoice ? 'Listening to your voice...' : '🎙️ Tap to Speak Question'}
               </button>
@@ -894,29 +1140,71 @@ export const StudentDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {quizzes.map((quiz) => (
-                <div key={quiz._id || quiz.id} className="p-4 rounded-xl border border-slate-200 hover:border-amber-300 transition-all bg-white flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="px-2 py-0.5 bg-amber-50 text-amber-800 text-[10px] font-bold rounded-md">{quiz.subject || 'Quiz'}</span>
-                      <span className="text-[10px] font-medium text-slate-400">{quiz.questions?.length || 3} Questions</span>
-                    </div>
-                    <h3 className="text-xs font-bold text-slate-900">{quiz.title}</h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{quiz.topic || 'Fractions & Decimals'}</p>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setActiveQuiz(quiz);
-                      setUserQuizAnswers({});
-                      setQuizResult(null);
-                    }}
-                    className="mt-4 w-full py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-xs"
+              {quizzes.map((quiz) => {
+                const isTeacherCreated = quiz.isTeacherBank || quiz.quizType === 'teacher_bank';
+                return (
+                  <div
+                    key={quiz._id || quiz.id}
+                    className={`p-5 rounded-2xl border transition-all bg-white flex flex-col justify-between shadow-xs ${isTeacherCreated
+                        ? 'border-indigo-200 hover:border-indigo-400 bg-gradient-to-b from-indigo-50/20 to-white'
+                        : 'border-slate-200 hover:border-amber-300'
+                      }`}
                   >
-                    Start Quiz
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <div className="flex items-center justify-between mb-2 gap-1.5 flex-wrap">
+                        <span
+                          className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-md ${isTeacherCreated
+                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                              : 'bg-amber-100 text-amber-800'
+                            }`}
+                        >
+                          {quiz.subject || 'Quiz'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isTeacherCreated
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : 'bg-slate-100 text-slate-600'
+                            }`}
+                        >
+                          {isTeacherCreated ? '👩‍🏫 Teacher Question Bank' : '✨ AI Quiz'}
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-900">{quiz.title}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{quiz.topic || 'General Topic'}</p>
+
+                      {isTeacherCreated ? (
+                        <div className="mt-2.5 flex items-center gap-2 text-[11px] text-indigo-700 bg-indigo-50/70 p-2 rounded-xl border border-indigo-100">
+                          <Layers className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
+                          <span>Draws <strong>4 random questions</strong> from teacher's 20-question bank</span>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-1">{quiz.questions?.length || 4} Questions • Instant evaluation</p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleStartQuiz(quiz)}
+                      disabled={isStartingQuiz}
+                      className={`mt-4 w-full py-2.5 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5 ${isTeacherCreated
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
+                          : 'bg-amber-500 hover:bg-amber-600 text-white'
+                        }`}
+                    >
+                      {isStartingQuiz ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Selecting 4 Random Questions...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Start 4-Question Quiz</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -970,31 +1258,61 @@ export const StudentDashboard: React.FC = () => {
 
       {/* ================= MODAL 1: WATCH YOUTUBE VIDEO ================= */}
       {activeVideo && activeVideo.isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl border border-slate-200 flex flex-col">
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl border border-slate-700 flex flex-col">
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-sm">YouTube</span>
                 <h3 className="font-bold text-xs sm:text-sm text-slate-100 line-clamp-1">{activeVideo.title}</h3>
               </div>
-              <button onClick={() => setActiveVideo(null)} className="text-slate-400 hover:text-white p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setActiveVideo(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="relative aspect-video bg-black">
-              <iframe
-                src={getYouTubeEmbedUrl(activeVideo.videoId)}
-                title={activeVideo.title}
-                className="w-full h-full border-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              ></iframe>
+            <div className="relative aspect-video bg-black flex items-center justify-center">
+              {videoPlayerError ? (
+                <div className="flex flex-col items-center justify-center p-6 text-center text-slate-300 space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-rose-400 mb-1">
+                    <X className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-sm text-white">Video Unavailable</h4>
+                  <p className="text-xs text-slate-400 max-w-sm">
+                    This educational video stream could not be loaded in the embedded player. You can open it directly in YouTube:
+                  </p>
+                  <a
+                    href={`https://www.youtube.com/watch?v=${activeVideo.videoId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Open on YouTube</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              ) : (
+                <iframe
+                  src={`${getYouTubeEmbedUrl(activeVideo.videoId)}?autoplay=1`}
+                  title={activeVideo.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  onError={() => setVideoPlayerError(true)}
+                ></iframe>
+              )}
             </div>
 
-            <div className="p-4 bg-slate-50 flex items-center justify-between text-xs text-slate-600">
-              <span className="font-bold text-slate-900">{activeVideo.subject} {activeVideo.chapter ? `• ${activeVideo.chapter}` : ''}</span>
-              <button onClick={() => setActiveVideo(null)} className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 font-bold text-slate-700 cursor-pointer">
+            <div className="p-4 bg-slate-800/80 flex items-center justify-between text-xs text-slate-300 border-t border-slate-700/60">
+              <span className="font-bold text-slate-200">{activeVideo.subject} {activeVideo.chapter ? `• ${activeVideo.chapter}` : ''}</span>
+              <button
+                type="button"
+                onClick={() => setActiveVideo(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 font-bold text-white cursor-pointer transition-colors"
+              >
                 Close Player
               </button>
             </div>
@@ -1068,11 +1386,10 @@ export const StudentDashboard: React.FC = () => {
                     </div>
                   )}
 
-                  <div className={`max-w-[85%] rounded-2xl p-4 text-xs ${
-                    msg.role === 'user'
+                  <div className={`max-w-[85%] rounded-2xl p-4 text-xs ${msg.role === 'user'
                       ? 'bg-blue-600 text-white font-medium rounded-tr-none'
                       : 'bg-white border border-slate-200 text-slate-800 shadow-2xs rounded-tl-none space-y-3'
-                  }`}>
+                    }`}>
                     <p className="whitespace-pre-wrap">{msg.text}</p>
 
                     {msg.data && (
@@ -1210,82 +1527,218 @@ export const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* ================= MODAL 4: TAKE QUIZ ================= */}
+      {/* ================= MODAL 4: TAKE QUIZ & RESULTS ================= */}
       {activeQuiz && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-xl p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md">
-                  {activeQuiz.subject || 'Quiz'}
-                </span>
-                <h3 className="font-bold text-sm text-slate-900 mt-1">{activeQuiz.title}</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-800 rounded-md">
+                    {activeQuiz.subject || 'Quiz'}
+                  </span>
+                  {activeQuiz.isTeacherBank && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-100 text-purple-800 rounded-md">
+                      👩‍🏫 Teacher Question Bank (4 Random Questions)
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-extrabold text-base text-slate-900 mt-1">{activeQuiz.title}</h3>
+                <p className="text-xs text-slate-500">{activeQuiz.topic || 'Practice Assessment'}</p>
               </div>
-              <button onClick={() => setActiveQuiz(null)} className="text-slate-400 hover:text-slate-600 p-1">
+              <button onClick={() => setActiveQuiz(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {quizResult ? (
-              <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-2xl font-black">
-                  🎉
+              <div className="py-2 space-y-5">
+                {/* Result Header Banner */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 via-white to-purple-50 border border-indigo-200 text-center space-y-2">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-2xl font-black shadow-xs">
+                    {(quizResult.percentage ?? quizResult.score) >= 75 ? '🎉' : '📚'}
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">Quiz Completed!</h3>
+                  <p className="text-2xl font-black text-indigo-700">
+                    Score: {quizResult.correctCount ?? quizResult.score} / {quizResult.totalQuestions || 4}
+                    <span className="text-base text-slate-500 font-bold ml-2">
+                      ({quizResult.percentage ?? Math.round(quizResult.score)}%)
+                    </span>
+                  </p>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-100/80 border border-amber-300 rounded-full text-xs font-black text-amber-900 mt-1">
+                    <span>⭐ +{quizResult.starsEarned || 20} Stars</span>
+                    <span>•</span>
+                    <span>🪙 +{quizResult.coinsEarned || 50} Coins</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900">Quiz Completed!</h3>
-                  <p className="text-xs text-slate-500 mt-1">Your Score: {quizResult.score}% ({quizResult.correctCount}/{quizResult.totalQuestions} Correct)</p>
-                </div>
-                <div className="p-3 bg-amber-50 rounded-xl text-xs font-bold text-amber-900 inline-block">
-                  ⭐ Earned +{quizResult.starsEarned || 20} Stars & +{quizResult.coinsEarned || 50} Coins!
-                </div>
-                <div>
-                  <button onClick={() => setActiveQuiz(null)} className="px-6 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs">
+
+                {/* Question-by-Question Review Breakdown */}
+                {quizResult.results && quizResult.results.length > 0 ? (
+                  <div className="space-y-3">
+                    <h4 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <HelpCircle className="w-4 h-4 text-indigo-600" /> Question-by-Question Review
+                    </h4>
+                    {quizResult.results.map((resItem: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className={`p-4 rounded-2xl border text-xs space-y-2 transition-all ${resItem.isCorrect
+                            ? 'bg-emerald-50/40 border-emerald-200'
+                            : 'bg-rose-50/40 border-rose-200'
+                          }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-bold text-slate-900 text-xs">
+                            Q{idx + 1}: {resItem.question}
+                          </p>
+                          <span
+                            className={`shrink-0 px-2 py-0.5 rounded-md font-bold text-[10px] flex items-center gap-1 ${resItem.isCorrect
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                              }`}
+                          >
+                            {resItem.isCorrect ? (
+                              <>
+                                <Check className="w-3 h-3" /> Correct
+                              </>
+                            ) : (
+                              <>
+                                <X className="w-3 h-3" /> Incorrect
+                              </>
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                          <div className="p-2 rounded-xl bg-white border border-slate-200">
+                            <span className="text-slate-500 font-semibold block">Your Answer:</span>
+                            <span className={resItem.isCorrect ? 'font-bold text-emerald-700' : 'font-bold text-rose-700'}>
+                              {resItem.studentAnswer || 'None selected'}
+                            </span>
+                          </div>
+                          <div className="p-2 rounded-xl bg-white border border-slate-200">
+                            <span className="text-slate-500 font-semibold block">Correct Answer:</span>
+                            <span className="font-bold text-emerald-700">{resItem.correctAnswer}</span>
+                          </div>
+                        </div>
+
+                        {resItem.explanation && (
+                          <div className="p-2.5 rounded-xl bg-white/80 border border-slate-200 text-[11px] text-slate-600 flex items-start gap-1.5">
+                            <span className="font-bold text-indigo-700 shrink-0">💡 Explanation:</span>
+                            <span>{resItem.explanation}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* Footer Controls */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  {activeQuiz.isTeacherBank && (
+                    <button
+                      onClick={() => handleStartQuiz(activeQuiz)}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer border border-indigo-200 transition-all"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Try Another 4 Random Questions</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setActiveQuiz(null);
+                      setQuizResult(null);
+                    }}
+                    className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs cursor-pointer"
+                  >
                     Done
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-6">
-                {(activeQuiz.questions || []).map((q: any, qIdx: number) => (
-                  <div key={qIdx} className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/50 space-y-3">
-                    <p className="text-xs font-bold text-slate-800">{qIdx + 1}. {q.question || q.questionText}</p>
-                    <div className="space-y-1.5">
-                      {(q.options || []).map((opt: string, optIdx: number) => {
-                        const optLetter = typeof opt === 'string' && opt.length > 1 && opt[1] === ')' ? opt[0] : opt;
-                        const isSelected = userQuizAnswers[qIdx] === opt || userQuizAnswers[qIdx] === optLetter;
-                        return (
-                          <label
-                            key={optIdx}
-                            className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
-                              isSelected ? 'bg-blue-50 border-blue-500 text-blue-900 font-bold' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`question-${qIdx}`}
-                              checked={isSelected}
-                              onChange={() => setUserQuizAnswers((prev) => ({ ...prev, [qIdx]: opt }))}
-                              className="w-3.5 h-3.5 text-blue-600"
-                            />
-                            <span>{opt}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-5">
+                <div className="p-3 bg-indigo-50/60 rounded-2xl border border-indigo-100 text-xs text-indigo-900 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>
+                    Answer all <strong>4 questions</strong> below and submit to evaluate your score instantly!
+                  </span>
+                </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                  <button onClick={() => setActiveQuiz(null)} className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleSubmitQuiz(activeQuiz._id || activeQuiz.id)}
-                    disabled={isSubmittingQuiz}
-                    className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50"
-                  >
-                    {isSubmittingQuiz ? 'Evaluating...' : 'Submit Answers'}
-                  </button>
+                {(activeQuiz.questions || []).map((q: any, qIdx: number) => {
+                  const qId = (q._id || q.id || qIdx).toString();
+                  const currentSelection = userQuizAnswers[qId] !== undefined ? userQuizAnswers[qId] : userQuizAnswers[qIdx];
+                  return (
+                    <div key={qIdx} className="p-4 rounded-2xl border border-slate-200/90 bg-slate-50/60 space-y-3">
+                      <p className="text-xs font-bold text-slate-900">
+                        Q{qIdx + 1}. {q.question || q.questionText}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {(q.options || []).map((opt: string, optIdx: number) => {
+                          const optionLetters = ['A', 'B', 'C', 'D'];
+                          const optLetter = optionLetters[optIdx];
+                          const isSelected =
+                            currentSelection === opt ||
+                            currentSelection === optLetter ||
+                            currentSelection === `${optLetter}) ${opt}`;
+
+                          return (
+                            <label
+                              key={optIdx}
+                              className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-all ${isSelected
+                                  ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-extrabold shadow-2xs'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'
+                                }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`question-${qIdx}`}
+                                checked={isSelected}
+                                onChange={() => {
+                                  setUserQuizAnswers((prev) => ({
+                                    ...prev,
+                                    [qId]: opt,
+                                    [qIdx]: opt,
+                                  }));
+                                }}
+                                className="w-3.5 h-3.5 text-indigo-600"
+                              />
+                              <span className="font-bold text-slate-400 mr-0.5">{optLetter}.</span>
+                              <span className="flex-1">{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {Object.keys(userQuizAnswers).length / 2 >= 4 || Object.keys(userQuizAnswers).length >= 4
+                      ? '✅ All 4 questions answered'
+                      : `Selected ${Math.min(4, Math.ceil(Object.keys(userQuizAnswers).length / 2))} of 4 questions`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveQuiz(null)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleSubmitQuiz(activeQuiz._id || activeQuiz.id)}
+                      disabled={isSubmittingQuiz}
+                      className="px-6 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {isSubmittingQuiz ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Evaluating...</span>
+                        </>
+                      ) : (
+                        <span>Submit Answers</span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

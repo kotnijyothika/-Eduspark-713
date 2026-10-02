@@ -5,6 +5,8 @@ const Lesson = require('../models/Lesson');
 const User = require('../models/User');
 const Homework = require('../models/Homework');
 const Quiz = require('../models/Quiz');
+const QuestionBank = require('../models/QuestionBank');
+const QuizAttempt = require('../models/QuizAttempt');
 const Attendance = require('../models/Attendance');
 const memoryStore = require('../utils/memoryStore');
 const aiService = require('../services/aiService');
@@ -692,7 +694,352 @@ exports.deleteQuiz = async (req, res) => {
   }
 };
 
+/* ==========================================
+   TEACHER QUESTION BANK MODULE (20 QUESTIONS)
+   ========================================== */
 
+/**
+ * Validate a Question Bank payload before creating or updating
+ */
+const validateQuestionBankPayload = (body) => {
+  const { title, grade, subject, topic, questions } = body;
+  if (!title || !title.trim()) {
+    return 'Question bank title is required.';
+  }
+  if (!grade || !grade.trim()) {
+    return 'Class/Grade is required.';
+  }
+  if (!subject || !subject.trim()) {
+    return 'Subject is required.';
+  }
+  if (!topic || !topic.trim()) {
+    return 'Topic is required.';
+  }
+  if (!Array.isArray(questions) || questions.length !== 20) {
+    return `A complete question bank requires exactly 20 questions. Provided: ${Array.isArray(questions) ? questions.length : 0} questions.`;
+  }
+
+  const seenQuestions = new Set();
+  for (let i = 0; i < 20; i++) {
+    const q = questions[i];
+    if (!q || !q.question || !q.question.trim()) {
+      return `Question #${i + 1} is missing the question text.`;
+    }
+
+    const qTextTrimmed = q.question.trim().toLowerCase();
+    if (seenQuestions.has(qTextTrimmed)) {
+      return `Duplicate question detected at Question #${i + 1}. Each of the 20 questions must be unique.`;
+    }
+    seenQuestions.add(qTextTrimmed);
+
+    if (!Array.isArray(q.options) || q.options.length !== 4) {
+      return `Question #${i + 1} must have exactly 4 options (A, B, C, D).`;
+    }
+
+    for (let optIdx = 0; optIdx < 4; optIdx++) {
+      const opt = q.options[optIdx];
+      if (opt === undefined || opt === null || (typeof opt === 'string' && !opt.trim())) {
+        const letters = ['A', 'B', 'C', 'D'];
+        return `Question #${i + 1} is missing Option ${letters[optIdx]}.`;
+      }
+    }
+
+    if (!q.correctAnswer || (typeof q.correctAnswer === 'string' && !q.correctAnswer.trim())) {
+      return `Question #${i + 1} must have a correct answer selected.`;
+    }
+  }
+
+  return null; // Valid
+};
+
+// @desc    Get all question banks for teacher
+// @route   GET /api/teacher/question-banks
+// @access  Private (Teacher, Admin)
+exports.getQuestionBanks = async (req, res) => {
+  try {
+    const teacherId = req.user?._id || req.user?.id;
+    const isTeacher = req.user?.role === 'teacher';
+    const filter = isTeacher && teacherId ? { $or: [{ teacher: teacherId }, { teacherName: req.user?.name }] } : {};
+
+    let banks = [];
+    try {
+      banks = await QuestionBank.find(filter).sort({ createdAt: -1 });
+    } catch (e) {
+      banks = memoryStore.questionBanks || [];
+    }
+    if (!banks.length && memoryStore.questionBanks) {
+      banks = memoryStore.questionBanks;
+    }
+
+    // Attach attempt count statistics
+    let attempts = [];
+    try {
+      attempts = await QuizAttempt.find().lean();
+    } catch (e) {
+      attempts = memoryStore.quizAttempts || [];
+    }
+
+    const banksWithStats = banks.map((b) => {
+      const doc = b.toObject ? b.toObject() : { ...b };
+      const bankId = (doc._id || doc.id).toString();
+      const bankAttempts = attempts.filter((a) => (a.questionBankId || a.questionBank)?.toString() === bankId);
+      const attemptCount = bankAttempts.length;
+      const averageScore = attemptCount > 0
+        ? Math.round(bankAttempts.reduce((acc, a) => acc + (a.percentage || (a.score / a.totalQuestions) * 100), 0) / attemptCount)
+        : 0;
+
+      return {
+        ...doc,
+        availableQuestionsCount: doc.questions ? doc.questions.length : 20,
+        attemptCount,
+        averageScore,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: banksWithStats.length,
+      data: banksWithStats,
+    });
+  } catch (error) {
+    console.error('getQuestionBanks error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch question banks.' });
+  }
+};
+
+// @desc    Get single question bank by ID
+// @route   GET /api/teacher/question-banks/:id
+// @access  Private (Teacher, Admin)
+exports.getQuestionBankById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let bank = null;
+
+    try {
+      bank = await QuestionBank.findById(id);
+    } catch (e) {}
+
+    if (!bank) {
+      bank = (memoryStore.questionBanks || []).find((b) => b.id === id || b._id === id);
+    }
+
+    if (!bank) {
+      return res.status(404).json({ success: false, message: 'Question bank not found.' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: bank,
+    });
+  } catch (error) {
+    console.error('getQuestionBankById error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch question bank details.' });
+  }
+};
+
+// @desc    Create a 20-question Question Bank
+// @route   POST /api/teacher/question-banks
+// @access  Private (Teacher, Admin)
+exports.createQuestionBank = async (req, res) => {
+  try {
+    const validationError = validateQuestionBankPayload(req.body);
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
+
+    if (!req.user?._id || !mongoose.Types.ObjectId.isValid(req.user._id.toString())) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid authenticated user ID',
+      });
+    }
+
+    console.log(`[AUTH] QuestionBank teacher ID: ${req.user._id}`);
+
+    const { title, grade, subject, topic, difficulty, questions } = req.body;
+    const teacherId = req.user._id;
+    const teacherName = req.user?.name || 'Teacher';
+
+    const bankPayload = {
+      teacher: teacherId,
+      teacherName,
+      title: title.trim(),
+      grade: grade.trim(),
+      subject: subject.trim(),
+      topic: topic.trim(),
+      difficulty: difficulty || 'Medium',
+      totalQuestionsCount: 20,
+      questions: questions.map((q, idx) => ({
+        question: q.question.trim(),
+        options: q.options.map((opt) => opt.toString().trim()),
+        correctAnswer: q.correctAnswer.toString().trim(),
+        explanation: (q.explanation || '').trim(),
+        difficulty: q.difficulty || difficulty || 'Medium',
+      })),
+      isPublished: true,
+    };
+
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[QuestionBank] MongoDB is not connected (readyState !== 1)');
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
+    }
+
+    try {
+      const createdBank = await QuestionBank.create(bankPayload);
+      return res.status(201).json({
+        success: true,
+        message: '🎉 Question Bank with 20 questions published successfully!',
+        data: createdBank,
+      });
+    } catch (dbErr) {
+      console.error('[QuestionBank] MongoDB write failed:', dbErr);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to create question bank in database.',
+        error: process.env.NODE_ENV === 'production' ? undefined : dbErr.message,
+      });
+    }
+  } catch (error) {
+    console.error('createQuestionBank error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create question bank.' });
+  }
+};
+
+// @desc    Update an existing Question Bank
+// @route   PUT /api/teacher/question-banks/:id
+// @access  Private (Teacher, Admin)
+exports.updateQuestionBank = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const validationError = validateQuestionBankPayload(req.body);
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
+    }
+
+    const { title, grade, subject, topic, difficulty, questions } = req.body;
+
+    const updatePayload = {
+      title: title.trim(),
+      grade: grade.trim(),
+      subject: subject.trim(),
+      topic: topic.trim(),
+      difficulty: difficulty || 'Medium',
+      totalQuestionsCount: 20,
+      questions: questions.map((q, idx) => ({
+        _id: q._id || q.id || undefined,
+        question: q.question.trim(),
+        options: q.options.map((opt) => opt.toString().trim()),
+        correctAnswer: q.correctAnswer.toString().trim(),
+        explanation: (q.explanation || '').trim(),
+        difficulty: q.difficulty || difficulty || 'Medium',
+      })),
+      isPublished: true,
+    };
+
+    try {
+      const updated = await QuestionBank.findByIdAndUpdate(id, updatePayload, { new: true });
+      if (updated) {
+        return res.status(200).json({
+          success: true,
+          message: 'Question Bank updated successfully!',
+          data: updated,
+        });
+      }
+    } catch (dbErr) {}
+
+    const memUpdated = memoryStore.updateQuestionBank(id, updatePayload);
+    if (memUpdated) {
+      return res.status(200).json({
+        success: true,
+        message: 'Question Bank updated (Demo Mode)!',
+        data: memUpdated,
+      });
+    }
+
+    res.status(404).json({ success: false, message: 'Question bank not found.' });
+  } catch (error) {
+    console.error('updateQuestionBank error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update question bank.' });
+  }
+};
+
+// @desc    Delete a Question Bank
+// @route   DELETE /api/teacher/question-banks/:id
+// @access  Private (Teacher, Admin)
+exports.deleteQuestionBank = async (req, res) => {
+  try {
+    const { id } = req.params;
+    try {
+      const deleted = await QuestionBank.findByIdAndDelete(id);
+      if (deleted) {
+        return res.status(200).json({ success: true, message: 'Question bank deleted successfully.' });
+      }
+    } catch (e) {}
+
+    const memDeleted = memoryStore.deleteQuestionBank(id);
+    if (memDeleted) {
+      return res.status(200).json({ success: true, message: 'Question bank deleted from demo storage.' });
+    }
+
+    res.status(404).json({ success: false, message: 'Question bank not found.' });
+  } catch (error) {
+    console.error('deleteQuestionBank error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete question bank.' });
+  }
+};
+
+// @desc    Get student results / attempts for a specific question bank
+// @route   GET /api/teacher/question-banks/:id/results
+// @access  Private (Teacher, Admin)
+exports.getQuestionBankResults = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let attempts = [];
+
+    try {
+      attempts = await QuizAttempt.find({
+        $or: [{ questionBank: id }, { questionBankId: id }],
+      }).sort({ takenAt: -1 });
+    } catch (e) {
+      attempts = (memoryStore.quizAttempts || []).filter((a) => (a.questionBankId || a.questionBank)?.toString() === id.toString());
+    }
+
+    res.status(200).json({
+      success: true,
+      count: attempts.length,
+      data: attempts,
+    });
+  } catch (error) {
+    console.error('getQuestionBankResults error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch student quiz attempts.' });
+  }
+};
+
+// @desc    Get all student quiz attempts for teacher
+// @route   GET /api/teacher/question-banks-results
+// @access  Private (Teacher, Admin)
+exports.getAllTeacherQuizResults = async (req, res) => {
+  try {
+    let attempts = [];
+    try {
+      attempts = await QuizAttempt.find().sort({ takenAt: -1 });
+    } catch (e) {
+      attempts = memoryStore.quizAttempts || [];
+    }
+
+    res.status(200).json({
+      success: true,
+      count: attempts.length,
+      data: attempts,
+    });
+  } catch (error) {
+    console.error('getAllTeacherQuizResults error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch teacher quiz results.' });
+  }
+};
 
 /* ==========================================
    STUDENT ANALYTICS

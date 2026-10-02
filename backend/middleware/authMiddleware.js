@@ -2,9 +2,6 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// In-memory user fallback for instant demo testing when MongoDB is not running
-const memoryUsers = require('../utils/memoryStore');
-
 const protect = async (req, res, next) => {
   let token;
 
@@ -28,31 +25,35 @@ const protect = async (req, res, next) => {
       process.env.JWT_SECRET || 'eduspark_secret_key_2026_super_secure'
     );
 
-    // Try MongoDB first if connected and valid ObjectId, otherwise fallback to in-memory store
-    if (mongoose.connection.readyState === 1 && mongoose.Types.ObjectId.isValid(decoded.id)) {
-      try {
-        req.user = await User.findById(decoded.id).select('-password');
-      } catch (e) {
-        req.user = null;
-      }
-    }
-
-    if (!req.user) {
-      req.user = memoryUsers.findById(decoded.id);
-    }
-
-    if (!req.user) {
+    if (!decoded || !decoded.id || !mongoose.Types.ObjectId.isValid(decoded.id)) {
       return res.status(401).json({
         success: false,
-        message: 'User no longer exists.',
+        message: 'Not authorized. Invalid token payload.',
       });
     }
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
+    }
+
+    const user = await User.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User no longer exists or unauthorized.',
+      });
+    }
+
+    req.user = user;
     next();
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: 'Not authorized to access this route. Invalid token.',
+      message: 'Not authorized to access this route. Invalid or expired token.',
     });
   }
 };

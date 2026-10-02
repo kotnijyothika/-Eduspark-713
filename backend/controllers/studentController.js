@@ -2,6 +2,8 @@ const Lesson = require('../models/Lesson');
 const User = require('../models/User');
 const Homework = require('../models/Homework');
 const Quiz = require('../models/Quiz');
+const QuestionBank = require('../models/QuestionBank');
+const QuizAttempt = require('../models/QuizAttempt');
 const memoryStore = require('../utils/memoryStore');
 const aiService = require('../services/aiService');
 const ocrService = require('../services/ocrService');
@@ -17,40 +19,100 @@ exports.getStudentDashboardData = async (req, res) => {
     let lessonsList = [];
     let hwList = [];
     let quizList = [];
+    let questionBankList = [];
     const studentGrade = req.user?.grade || 'Grade 4';
     const studentClass = req.user?.assignedClass || 'Grade 4 - Alpha';
+    const gradeMatch = studentGrade.match(/Grade\s*\d+/i) || studentClass.match(/Grade\s*\d+/i);
+    const normalizedGrade = gradeMatch ? gradeMatch[0].replace(/\s+/g, ' ') : studentGrade;
+
+    const gradeVariants = Array.from(
+      new Set([studentGrade, studentClass, normalizedGrade].filter(Boolean))
+    );
 
     const lessonFilter = {
       $or: [
-        { grade: studentGrade },
-        { className: studentClass },
-        { className: studentGrade },
+        { grade: { $in: gradeVariants } },
+        { className: { $in: gradeVariants } },
       ],
+    };
+
+    const quizFilter = {
+      $or: [
+        { grade: { $in: gradeVariants } },
+        { className: { $in: gradeVariants } },
+      ],
+      isPublished: { $ne: false },
+    };
+
+    const questionBankFilter = {
+      $or: [
+        { grade: { $in: gradeVariants } },
+        { className: { $in: gradeVariants } },
+      ],
+      isPublished: true,
+    };
+
+    const matchesStudentGrade = (item) => {
+      if (!item) return false;
+      const itemGrade = (item.grade || '').toLowerCase();
+      const itemClass = (item.className || '').toLowerCase();
+      return gradeVariants.some((v) => {
+        const vLow = v.toLowerCase();
+        return (
+          itemGrade === vLow ||
+          itemClass === vLow ||
+          itemGrade.includes(vLow) ||
+          vLow.includes(itemGrade)
+        );
+      });
     };
 
     try {
       lessonsList = await Lesson.find(lessonFilter).sort({ createdAt: -1 });
-      hwList = await Homework.find({ grade: studentGrade }).sort({ createdAt: -1 });
-      quizList = await Quiz.find({ grade: studentGrade }).sort({ createdAt: -1 });
+      hwList = await Homework.find({ grade: { $in: gradeVariants } }).sort({ createdAt: -1 });
+      quizList = await Quiz.find(quizFilter).sort({ createdAt: -1 });
+      questionBankList = await QuestionBank.find(questionBankFilter).sort({ createdAt: -1 });
     } catch (e) {
-      lessonsList = (memoryStore.lessons || []).filter(
-        (l) =>
-          (l.grade || '').toLowerCase() === studentGrade.toLowerCase() ||
-          (l.className || '').toLowerCase() === studentClass.toLowerCase()
+      lessonsList = (memoryStore.lessons || []).filter(matchesStudentGrade);
+      hwList = (memoryStore.homeworks || []).filter(matchesStudentGrade);
+      quizList = (memoryStore.quizzes || []).filter((q) => matchesStudentGrade(q) && q.isPublished !== false);
+      questionBankList = (memoryStore.questionBanks || []).filter(
+        (b) => matchesStudentGrade(b) && b.isPublished
       );
-      hwList = (memoryStore.homeworks || []).filter((h) => (h.grade || '').toLowerCase() === studentGrade.toLowerCase());
-      quizList = (memoryStore.quizzes || []).filter((q) => (q.grade || '').toLowerCase() === studentGrade.toLowerCase());
     }
 
     if (!lessonsList.length) {
-      lessonsList = (memoryStore.lessons || []).filter(
-        (l) =>
-          (l.grade || '').toLowerCase() === studentGrade.toLowerCase() ||
-          (l.className || '').toLowerCase() === studentClass.toLowerCase()
+      lessonsList = (memoryStore.lessons || []).filter(matchesStudentGrade);
+    }
+    if (!hwList.length) hwList = (memoryStore.homeworks || []).filter(matchesStudentGrade);
+    if (!quizList.length) quizList = (memoryStore.quizzes || []).filter((q) => matchesStudentGrade(q) && q.isPublished !== false);
+    if (!questionBankList.length && memoryStore.questionBanks) {
+      questionBankList = (memoryStore.questionBanks || []).filter(
+        (b) => matchesStudentGrade(b) && b.isPublished
       );
     }
-    if (!hwList.length) hwList = (memoryStore.homeworks || []).filter((h) => (h.grade || '').toLowerCase() === studentGrade.toLowerCase());
-    if (!quizList.length) quizList = (memoryStore.quizzes || []).filter((q) => (q.grade || '').toLowerCase() === studentGrade.toLowerCase());
+
+    // Format teacher question banks as available 4-question quizzes
+    const formattedBanks = questionBankList.map((b) => {
+      const doc = b.toObject ? b.toObject() : { ...b };
+      return {
+        _id: doc._id || doc.id,
+        id: doc.id || doc._id,
+        title: doc.title,
+        grade: doc.grade,
+        subject: doc.subject,
+        topic: doc.topic,
+        difficulty: doc.difficulty || 'Medium',
+        quizType: 'teacher_bank',
+        isTeacherBank: true,
+        questionsCount: 4,
+        totalMarks: 4,
+        teacherName: doc.teacherName || 'Teacher',
+        availablePoolCount: doc.questions ? doc.questions.length : 20,
+      };
+    });
+
+    const combinedQuizzes = [...quizList, ...formattedBanks];
 
     // Normalize lessons with videoId and thumbnail
     const normalizedLessons = lessonsList.map((item) => {
@@ -85,7 +147,7 @@ exports.getStudentDashboardData = async (req, res) => {
       profile: studentProfile,
       lessons: normalizedLessons,
       homeworks: hwList,
-      quizzes: quizList,
+      quizzes: combinedQuizzes,
       attendance: attendanceLog,
       achievements: memoryStore.achievements,
       bookmarks: memoryStore.bookmarks,
@@ -359,5 +421,264 @@ exports.getStudentAiForecast = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch AI forecast.' });
+  }
+};
+
+/* ==========================================
+   TEACHER QUESTION BANK - STUDENT QUIZ ATTEMPT & EVALUATION
+   ========================================== */
+
+// @desc    Start Teacher-Created Question Bank Quiz (Select 4 Random Questions securely)
+// @route   GET /api/student/quiz/bank/:bankId/start
+// @access  Private (Student)
+exports.startQuestionBankQuiz = async (req, res) => {
+  try {
+    const { bankId } = req.params;
+    let bank = null;
+
+    try {
+      bank = await QuestionBank.findById(bankId);
+    } catch (e) {}
+
+    if (!bank) {
+      bank = (memoryStore.questionBanks || []).find((b) => b.id === bankId || b._id === bankId);
+    }
+
+    if (!bank || !bank.questions || bank.questions.length === 0) {
+      return res.status(404).json({ success: false, message: 'Question Bank not found or has no questions.' });
+    }
+
+    const allQuestions = bank.questions;
+
+    // Pick EXACTLY 4 random UNIQUE questions without replacement (Fisher-Yates style shuffle)
+    const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+    const countToPick = Math.min(4, shuffled.length);
+    const selected = shuffled.slice(0, countToPick);
+
+    // Randomize the order of the selected questions as well
+    const randomizedSelected = selected.sort(() => 0.5 - Math.random());
+
+    // SECURITY: DO NOT SEND correctAnswer or explanation before submission!
+    const sanitizedQuestions = randomizedSelected.map((q, idx) => {
+      const qDoc = q.toObject ? q.toObject() : { ...q };
+      const qId = (qDoc._id || qDoc.id || `q-${idx}`).toString();
+      return {
+        _id: qId,
+        id: qId,
+        question: qDoc.question,
+        options: qDoc.options || [],
+        difficulty: qDoc.difficulty || bank.difficulty || 'Medium',
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      bankId: (bank._id || bank.id).toString(),
+      quizTitle: bank.title,
+      subject: bank.subject,
+      topic: bank.topic,
+      grade: bank.grade,
+      quizType: 'teacher_bank',
+      totalQuestions: sanitizedQuestions.length,
+      questions: sanitizedQuestions,
+    });
+  } catch (error) {
+    console.error('startQuestionBankQuiz error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate random quiz attempt.' });
+  }
+};
+
+// @desc    Submit Teacher Question Bank Quiz Answers & Evaluate
+// @route   POST /api/student/quiz/bank/:bankId/submit
+// @access  Private (Student)
+exports.submitQuestionBankQuiz = async (req, res) => {
+  try {
+    const { bankId } = req.params;
+    const { answers, selectedQuestionIds } = req.body;
+
+    let bank = null;
+    try {
+      bank = await QuestionBank.findById(bankId);
+    } catch (e) {}
+
+    if (!bank) {
+      bank = (memoryStore.questionBanks || []).find((b) => b.id === bankId || b._id === bankId);
+    }
+
+    if (!bank || !bank.questions) {
+      return res.status(404).json({ success: false, message: 'Question Bank not found.' });
+    }
+
+    // Helper function to compare student answer with correct answer
+    const checkIsCorrect = (userAns, correctAns, options) => {
+      if (userAns === undefined || userAns === null || correctAns === undefined || correctAns === null) return false;
+      const normUser = userAns.toString().trim().toLowerCase();
+      const normCorrect = correctAns.toString().trim().toLowerCase();
+      if (normUser === normCorrect) return true;
+
+      // Check letter mapping: A=0, B=1, C=2, D=3
+      const letterIndexMap = { a: 0, b: 1, c: 2, d: 3 };
+      if (letterIndexMap[normCorrect] !== undefined && options && options[letterIndexMap[normCorrect]]) {
+        if (normUser === options[letterIndexMap[normCorrect]].toString().trim().toLowerCase()) return true;
+      }
+      if (letterIndexMap[normUser] !== undefined && options && options[letterIndexMap[normUser]]) {
+        if (options[letterIndexMap[normUser]].toString().trim().toLowerCase() === normCorrect) return true;
+      }
+      return false;
+    };
+
+    // Find the 4 questions that were selected for this attempt
+    let questionItems = [];
+    if (Array.isArray(selectedQuestionIds) && selectedQuestionIds.length > 0) {
+      questionItems = selectedQuestionIds.map((qId) => {
+        return bank.questions.find((q) => (q._id || q.id)?.toString() === qId.toString()) || null;
+      }).filter(Boolean);
+    }
+
+    if (questionItems.length === 0 && answers && typeof answers === 'object') {
+      const keys = Object.keys(answers);
+      questionItems = keys.map((k) => {
+        if (!isNaN(k)) {
+          return bank.questions[parseInt(k, 10)];
+        }
+        return bank.questions.find((q) => (q._id || q.id)?.toString() === k.toString());
+      }).filter(Boolean);
+    }
+
+    if (questionItems.length === 0) {
+      questionItems = bank.questions.slice(0, 4);
+    }
+
+    let correctCount = 0;
+    const results = [];
+    const weakConcepts = [];
+
+    questionItems.forEach((q, idx) => {
+      const qId = (q._id || q.id || `q-${idx}`).toString();
+      let userAns = '';
+      if (answers && answers[qId] !== undefined) {
+        userAns = answers[qId];
+      } else if (answers && answers[idx] !== undefined) {
+        userAns = answers[idx];
+      } else if (Array.isArray(answers) && answers[idx] !== undefined) {
+        userAns = answers[idx];
+      }
+
+      const isCorrect = checkIsCorrect(userAns, q.correctAnswer, q.options);
+      if (isCorrect) {
+        correctCount++;
+      } else {
+        weakConcepts.push(q.question);
+      }
+
+      results.push({
+        questionId: qId,
+        question: q.question,
+        options: q.options || [],
+        studentAnswer: userAns || 'No answer selected',
+        correctAnswer: q.correctAnswer,
+        isCorrect,
+        explanation: q.explanation || '',
+      });
+    });
+
+    const totalQuestions = questionItems.length || 4;
+    const percentage = Math.round((correctCount / totalQuestions) * 100);
+
+    const attemptPayload = {
+      student: req.user?._id || req.user?.id,
+      studentName: req.user?.name || 'Student',
+      studentGrade: req.user?.grade || bank.grade || 'Grade 4',
+      questionBank: bank._id,
+      questionBankId: (bank._id || bank.id).toString(),
+      quizTitle: bank.title,
+      subject: bank.subject,
+      topic: bank.topic,
+      selectedQuestionIds: questionItems.map((q) => (q._id || q.id || '').toString()),
+      studentAnswers: answers || {},
+      score: correctCount,
+      totalQuestions,
+      percentage,
+      results,
+      weakConcepts,
+      takenAt: new Date(),
+    };
+
+    try {
+      await QuizAttempt.create(attemptPayload);
+    } catch (dbErr) {
+      memoryStore.saveQuizAttempt(attemptPayload);
+    }
+
+    // Update student's user profile with quiz result
+    if (req.user && req.user._id) {
+      try {
+        const student = await User.findById(req.user._id);
+        if (student) {
+          student.quizResults = student.quizResults || [];
+          student.quizResults.push({
+            quizId: bank._id,
+            quizTitle: bank.title,
+            subject: bank.subject,
+            score: percentage,
+            correctCount,
+            totalQuestions,
+            weakConcepts,
+            takenAt: new Date(),
+          });
+          student.stars = (student.stars || 0) + 20;
+          student.coins = (student.coins || 0) + 50;
+          await student.save();
+        }
+      } catch (e) {}
+    }
+
+    res.status(200).json({
+      success: true,
+      quizTitle: bank.title,
+      subject: bank.subject,
+      topic: bank.topic,
+      score: correctCount,
+      totalQuestions,
+      percentage,
+      correctCount,
+      results,
+      weakConcepts: weakConcepts.length ? weakConcepts : ['Perfect Score! Excellent Work!'],
+      starsEarned: 20,
+      coinsEarned: 50,
+      message: `You scored ${correctCount}/${totalQuestions} (${percentage}%)!`,
+    });
+  } catch (error) {
+    console.error('submitQuestionBankQuiz error:', error);
+    res.status(500).json({ success: false, message: 'Failed to evaluate quiz answers.' });
+  }
+};
+
+// @desc    Get current student's quiz attempts history
+// @route   GET /api/student/quiz/my-results
+// @access  Private (Student)
+exports.getStudentQuizResults = async (req, res) => {
+  try {
+    const studentId = req.user?._id || req.user?.id;
+    let attempts = [];
+
+    try {
+      attempts = await QuizAttempt.find({ student: studentId }).sort({ takenAt: -1 });
+    } catch (e) {
+      attempts = (memoryStore.quizAttempts || []).filter((a) => (a.student || a.studentId)?.toString() === studentId?.toString());
+    }
+
+    res.status(200).json({
+      success: true,
+      count: attempts.length,
+      data: attempts,
+    });
+  } catch (error) {
+    console.error('getStudentQuizResults error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch student quiz results.',
+      error: error.message,
+    });
   }
 };

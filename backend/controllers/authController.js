@@ -1,13 +1,16 @@
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
-const memoryStore = require('../utils/memoryStore');
 
 // Helper to generate JWT Token
 const generateToken = (id, role) => {
+  if (!id || !mongoose.Types.ObjectId.isValid(id.toString())) {
+    throw new Error('Invalid user ObjectId for JWT generation');
+  }
   return jwt.sign(
-    { id, role },
+    { id: id.toString(), role },
     process.env.JWT_SECRET || 'eduspark_secret_key_2026_super_secure',
     { expiresIn: '30d' }
   );
@@ -18,7 +21,7 @@ const generateToken = (id, role) => {
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, grade, subject, phone } = req.body;
+    const { name, email, password, role, grade, grades, subject, subjects, phone, assignedClass } = req.body;
 
     // Validation
     if (!name || !email || !password || !role) {
@@ -36,14 +39,27 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Check if user exists in DB or memoryStore
-    let existingUser = null;
-    try {
-      existingUser = await User.findOne({ email: email.toLowerCase() });
-    } catch (dbError) {
-      existingUser = memoryStore.findByEmail(email);
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long.',
+      });
     }
 
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[AUTH] Registration failed: MongoDB is not connected (readyState !== 1)');
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
+    }
+
+    console.log(`[AUTH] MongoDB readyState: ${mongoose.connection.readyState}, database: ${mongoose.connection.name}`);
+    console.log(`[AUTH] Registering user: email=${email.toLowerCase().trim()}, role=${role}`);
+
+    // Check if user already exists in MongoDB
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -51,86 +67,62 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Generate verification token (placeholder for email verification flow)
+    // Generate verification token
     const verificationToken = crypto.randomBytes(20).toString('hex');
 
-    let user;
-    let token;
+    // Create User in MongoDB - pre-save hook in User.js handles password hashing
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password,
+      role,
+      grade: grade || '',
+      grades: Array.isArray(grades) ? grades : (grade ? [grade] : []),
+      subject: subject || '',
+      subjects: Array.isArray(subjects) ? subjects : (subject ? [subject] : []),
+      phone: phone || '',
+      assignedClass: assignedClass || '',
+      isVerified: true,
+      verificationToken,
+    });
 
-    try {
-      // Try MongoDB creation
-      user = await User.create({
-        name,
-        email,
-        password,
-        role,
-        grade: grade || '',
-        subject: subject || '',
-        phone: phone || '',
-        isVerified: true, // Default to true for instant demo access
-        verificationToken,
-      });
+    console.log(`[AUTH] MongoDB User created: _id=${user._id}`);
 
-      token = generateToken(user._id, user.role);
+    const token = generateToken(user._id, user.role);
+    console.log(`[AUTH] JWT generated for MongoDB user: _id=${user._id}`);
 
-      res.status(201).json({
-        success: true,
-        message: 'Registration successful! Welcome to EduSpark AI.',
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          grade: user.grade || '',
-          grades: user.grades || [],
-          subject: user.subject || '',
-          subjects: user.subjects || [],
-          department: user.department || '',
-          teacherId: user.teacherId || '',
-          isVerified: user.isVerified,
-        },
-      });
-    } catch (mongoErr) {
-      // Fallback to Memory Store if MongoDB is unavailable
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      const memoryUser = memoryStore.saveUser({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        role,
-        grade: grade || '',
-        subject: subject || '',
-        phone: phone || '',
-        isVerified: true,
-        verificationToken,
-      });
-
-      token = generateToken(memoryUser._id, memoryUser.role);
-
-      res.status(201).json({
-        success: true,
-        message: 'Registration successful (Demo Mode)! Welcome to EduSpark AI.',
-        token,
-        user: {
-          id: memoryUser._id,
-          name: memoryUser.name,
-          email: memoryUser.email,
-          role: memoryUser.role,
-          grade: memoryUser.grade,
-          subject: memoryUser.subject,
-          isVerified: memoryUser.isVerified,
-        },
+    return res.status(201).json({
+      success: true,
+      message: 'Registration successful! Welcome to EduSpark AI.',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        grade: user.grade || '',
+        grades: user.grades || [],
+        subject: user.subject || '',
+        subjects: user.subjects || [],
+        department: user.department || '',
+        teacherId: user.teacherId || '',
+        assignedClass: user.assignedClass || '',
+        phone: user.phone || '',
+        isVerified: user.isVerified,
+      },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'An account with this email already exists.',
       });
     }
-  } catch (error) {
-    console.error('Registration Error:', error);
-    res.status(500).json({
+    console.error('[AUTH] MongoDB registration failed:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Server error during registration.',
-      error: error.message,
+      message: 'Failed to create account in database: ' + (error.message || 'Server error'),
+      error: process.env.NODE_ENV === 'production' ? undefined : error.message,
     });
   }
 };
@@ -150,38 +142,37 @@ exports.login = async (req, res) => {
       });
     }
 
-    let user = null;
-    let isMatch = false;
-
-    try {
-      user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-      if (user) {
-        isMatch = await user.matchPassword(password);
-      }
-    } catch (dbErr) {
-      // Fallback to memory store
-      user = memoryStore.findByEmail(email);
-      if (user) {
-        isMatch = await bcrypt.compare(password, user.password);
-      }
+    // Check database connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('[AUTH] Login failed: MongoDB is not connected (readyState !== 1)');
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
     }
 
-    // Check memory store if user wasn't found in DB
+    console.log(`[AUTH] Attempting login: email=${email.toLowerCase().trim()}`);
+
+    // Query MongoDB for user with password
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+
     if (!user) {
-      user = memoryStore.findByEmail(email);
-      if (user) {
-        isMatch = await bcrypt.compare(password, user.password);
-      }
-    }
-
-    if (!user || !isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
       });
     }
 
-    // Optional role check if client specified role on login
+    const isMatch = await user.matchPassword(password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password.',
+      });
+    }
+
+    // Role check if client specified role on login
     if (role && user.role !== role) {
       return res.status(403).json({
         success: false,
@@ -189,14 +180,24 @@ exports.login = async (req, res) => {
       });
     }
 
-    const token = generateToken(user._id || user.id, user.role);
+    if (!mongoose.Types.ObjectId.isValid(user._id.toString())) {
+      console.error('[AUTH] User _id is not a valid ObjectId:', user._id);
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid user database record.',
+      });
+    }
 
-    res.status(200).json({
+    console.log(`[AUTH] Login MongoDB user found: _id=${user._id}`);
+    const token = generateToken(user._id, user.role);
+    console.log(`[AUTH] JWT generated for MongoDB user: _id=${user._id}`);
+
+    return res.status(200).json({
       success: true,
       message: 'Login successful!',
       token,
       user: {
-        id: user._id || user.id,
+        id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
@@ -206,15 +207,17 @@ exports.login = async (req, res) => {
         subjects: user.subjects || [],
         department: user.department || '',
         teacherId: user.teacherId || '',
+        assignedClass: user.assignedClass || '',
+        phone: user.phone || '',
         isVerified: user.isVerified,
       },
     });
   } catch (error) {
-    console.error('Login Error:', error);
-    res.status(500).json({
+    console.error('[AUTH] Login Error:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Server error during login.',
-      error: error.message,
+      message: 'Server error during login: ' + (error.message || 'Unknown error'),
+      error: process.env.NODE_ENV === 'production' ? undefined : error.message,
     });
   }
 };
@@ -233,15 +236,14 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    let user = null;
-    try {
-      user = await User.findOne({ email: email.toLowerCase() });
-    } catch (dbErr) {
-      user = memoryStore.findByEmail(email);
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
     }
-    if (!user) {
-      user = memoryStore.findByEmail(email);
-    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user) {
       // Security best practice: don't reveal if user doesn't exist
@@ -256,36 +258,20 @@ exports.forgotPassword = async (req, res) => {
     const resetToken = crypto.randomBytes(20).toString('hex');
     const resetExpires = Date.now() + 30 * 60 * 1000; // 30 minutes
 
-    try {
-      if (user.save && typeof user.save === 'function') {
-        user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = resetExpires;
-        await user.save();
-      } else {
-        memoryStore.saveUser({
-          ...user,
-          resetPasswordToken: resetToken,
-          resetPasswordExpires: resetExpires,
-        });
-      }
-    } catch (saveErr) {
-      memoryStore.saveUser({
-        ...user,
-        resetPasswordToken: resetToken,
-        resetPasswordExpires: resetExpires,
-      });
-    }
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetExpires;
+    await user.save();
 
     console.log(`🔑 [Password Reset Token for ${email}]: ${resetToken}`);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Password reset link/token generated. Check your email or server console.',
       resetToken: process.env.NODE_ENV === 'production' ? undefined : resetToken,
     });
   } catch (error) {
-    console.error('Forgot Password Error:', error);
-    res.status(500).json({
+    console.error('[AUTH] Forgot Password Error:', error);
+    return res.status(500).json({
       success: false,
       message: 'Error processing forgot password request.',
     });
@@ -313,19 +299,17 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    let user = null;
-    try {
-      user = await User.findOne({
-        resetPasswordToken: resetToken,
-        resetPasswordExpires: { $gt: Date.now() },
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
       });
-    } catch (dbErr) {
-      user = memoryStore.findByResetToken(resetToken);
     }
 
-    if (!user) {
-      user = memoryStore.findByResetToken(resetToken);
-    }
+    const user = await User.findOne({
+      resetPasswordToken: resetToken,
+      resetPasswordExpires: { $gt: Date.now() },
+    });
 
     if (!user) {
       return res.status(400).json({
@@ -334,30 +318,19 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    // Set new password
-    if (user.save && typeof user.save === 'function') {
-      user.password = newPassword;
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpires = undefined;
-      await user.save();
-    } else {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(newPassword, salt);
-      memoryStore.saveUser({
-        ...user,
-        password: hashedPassword,
-        resetPasswordToken: undefined,
-        resetPasswordExpires: undefined,
-      });
-    }
+    // Set new password (User.js pre-save hook will hash it)
+    user.password = newPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Password successfully reset! You can now log in with your new password.',
     });
   } catch (error) {
-    console.error('Reset Password Error:', error);
-    res.status(500).json({
+    console.error('[AUTH] Reset Password Error:', error);
+    return res.status(500).json({
       success: false,
       message: 'Failed to reset password.',
     });
@@ -371,15 +344,14 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    let user = null;
-    try {
-      user = await User.findOne({ verificationToken: token });
-    } catch (dbErr) {
-      user = memoryStore.findByVerifyToken(token);
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is unavailable. Please try again later.',
+      });
     }
-    if (!user) {
-      user = memoryStore.findByVerifyToken(token);
-    }
+
+    const user = await User.findOne({ verificationToken: token });
 
     if (!user) {
       return res.status(400).json({
@@ -388,24 +360,17 @@ exports.verifyEmail = async (req, res) => {
       });
     }
 
-    if (user.save && typeof user.save === 'function') {
-      user.isVerified = true;
-      user.verificationToken = undefined;
-      await user.save();
-    } else {
-      memoryStore.saveUser({
-        ...user,
-        isVerified: true,
-        verificationToken: undefined,
-      });
-    }
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    await user.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Email successfully verified!',
     });
   } catch (error) {
-    res.status(500).json({
+    console.error('[AUTH] Verify Email Error:', error);
+    return res.status(500).json({
       success: false,
       message: 'Error verifying email.',
     });
@@ -416,8 +381,31 @@ exports.verifyEmail = async (req, res) => {
 // @route   GET /api/auth/me
 // @access  Private
 exports.getMe = async (req, res) => {
-  res.status(200).json({
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Not authorized. User profile not found.',
+    });
+  }
+
+  const userSafe = {
+    id: req.user._id,
+    name: req.user.name,
+    email: req.user.email,
+    role: req.user.role,
+    grade: req.user.grade || '',
+    grades: req.user.grades || [],
+    subject: req.user.subject || '',
+    subjects: req.user.subjects || [],
+    department: req.user.department || '',
+    teacherId: req.user.teacherId || '',
+    assignedClass: req.user.assignedClass || '',
+    phone: req.user.phone || '',
+    isVerified: req.user.isVerified,
+  };
+
+  return res.status(200).json({
     success: true,
-    user: req.user,
+    user: userSafe,
   });
 };

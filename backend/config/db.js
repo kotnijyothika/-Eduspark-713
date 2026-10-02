@@ -35,6 +35,7 @@ const connectDB = async () => {
     });
     console.log('✅ MongoDB Connected Successfully');
     console.log(`📡 Cluster Host: ${conn.connection.host}`);
+    console.log(`📦 Database Name: ${conn.connection.name}`);
     return conn;
   } catch (error) {
     // Provide actionable diagnosis without exposing credentials
